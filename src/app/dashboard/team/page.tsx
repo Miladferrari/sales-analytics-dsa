@@ -33,12 +33,45 @@ export default function TeamPage() {
     name: '',
     email: '',
   })
+  const [availableTeams, setAvailableTeams] = useState<string[]>([])
+  const [selectedTeams, setSelectedTeams] = useState<string[]>([])
+  const [loadingTeams, setLoadingTeams] = useState(false)
 
   useEffect(() => {
     loadUser()
     loadReps()
     loadArchivedCount()
   }, [])
+
+  // Load available Fathom teams when modal opens
+  useEffect(() => {
+    if (showAddModal) {
+      loadFathomTeams()
+    }
+  }, [showAddModal])
+
+  async function loadFathomTeams() {
+    setLoadingTeams(true)
+    try {
+      const response = await fetch('/api/fathom/teams')
+      const data = await response.json()
+      if (data.success) {
+        setAvailableTeams(data.teams)
+      }
+    } catch (error) {
+      console.error('Error loading Fathom teams:', error)
+    } finally {
+      setLoadingTeams(false)
+    }
+  }
+
+  function toggleTeam(team: string) {
+    setSelectedTeams(prev =>
+      prev.includes(team)
+        ? prev.filter(t => t !== team)
+        : [...prev, team]
+    )
+  }
 
   async function loadArchivedCount() {
     try {
@@ -181,6 +214,7 @@ export default function TeamPage() {
           name: formData.name.trim(),
           email: formData.email.toLowerCase().trim(),
           qualification_status: 'unqualified',
+          fathom_teams: selectedTeams, // Add selected teams
         })
         .select()
         .single()
@@ -200,6 +234,7 @@ export default function TeamPage() {
         name: '',
         email: '',
       })
+      setSelectedTeams([])
       setShowAddModal(false)
 
       // Reload reps list
@@ -518,6 +553,61 @@ export default function TeamPage() {
                   <p className="text-xs text-gray-500 mt-1">
                     ⚠️ Gebruik het email adres waarmee deze persoon Fathom calls opneemt
                   </p>
+                </div>
+
+                {/* Fathom Teams Selector */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Fathom Teams (optioneel)
+                    <span className="text-gray-400 font-normal ml-1">
+                      - Selecteer teams voor call import
+                    </span>
+                  </label>
+
+                  {loadingTeams ? (
+                    <div className="flex items-center gap-2 text-sm text-gray-500 py-3">
+                      <svg className="animate-spin h-4 w-4" fill="none" viewBox="0 0 24 24">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                      </svg>
+                      Teams laden...
+                    </div>
+                  ) : availableTeams.length > 0 ? (
+                    <>
+                      <div className="flex flex-wrap gap-2">
+                        {availableTeams.map((team) => (
+                          <button
+                            key={team}
+                            type="button"
+                            onClick={() => toggleTeam(team)}
+                            className={`inline-flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium transition-all ${
+                              selectedTeams.includes(team)
+                                ? 'bg-indigo-100 text-indigo-700 border-2 border-indigo-300 hover:bg-indigo-200'
+                                : 'bg-gray-50 text-gray-700 border-2 border-gray-200 hover:bg-gray-100 hover:border-gray-300'
+                            }`}
+                          >
+                            {selectedTeams.includes(team) && (
+                              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                              </svg>
+                            )}
+                            {team}
+                          </button>
+                        ))}
+                      </div>
+                      <p className="text-xs text-gray-500 mt-2">
+                        {selectedTeams.length === 0 ? (
+                          '💡 Geen team geselecteerd = import uit alle teams'
+                        ) : (
+                          `✓ Import alleen uit: ${selectedTeams.join(', ')}`
+                        )}
+                      </p>
+                    </>
+                  ) : (
+                    <p className="text-sm text-gray-500 py-2">
+                      Geen teams gevonden
+                    </p>
+                  )}
                 </div>
 
               </div>
