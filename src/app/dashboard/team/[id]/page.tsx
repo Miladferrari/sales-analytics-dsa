@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react'
 import { useRouter, useParams } from 'next/navigation'
 import { supabase } from '@/lib/supabase/client'
 import DashboardLayout from '@/components/DashboardLayout'
-import { ArrowLeft, Phone, TrendingUp, CircleAlert, CircleCheckBig, Mail, ChevronRight, Plus, X, ExternalLink, Clock, Calendar, AlertCircle, CheckCircle, Bot, RefreshCw, XCircle } from 'lucide-react'
+import { ArrowLeft, Phone, TrendingUp, CircleAlert, CircleCheckBig, Mail, ChevronRight, Plus, X, ExternalLink, Clock, Calendar, AlertCircle, CheckCircle, Bot, RefreshCw, XCircle, Sparkles } from 'lucide-react'
 import { format, addDays, startOfWeek, subDays, parseISO } from 'date-fns'
 import { nl } from 'date-fns/locale'
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts'
@@ -41,6 +41,7 @@ export default function TeamMemberPage() {
   const [selectedTeams, setSelectedTeams] = useState<string[]>([])
   const [loadingTeams, setLoadingTeams] = useState(false)
   const [savingTeams, setSavingTeams] = useState(false)
+  const [analyzingCallId, setAnalyzingCallId] = useState<string | null>(null)
 
   // Toast Notifications State
   const [toasts, setToasts] = useState<Toast[]>([])
@@ -99,7 +100,10 @@ export default function TeamMemberPage() {
           analysis (
             framework_score,
             sentiment_score,
-            key_topics
+            key_topics,
+            is_sales_call,
+            call_type,
+            rejection_reason
           )
         `)
         .eq('rep_id', repId)
@@ -115,7 +119,10 @@ export default function TeamMemberPage() {
             analysis (
               framework_score,
               sentiment_score,
-              key_topics
+              key_topics,
+              is_sales_call,
+              call_type,
+              rejection_reason
             )
           `)
           .eq('sales_rep_id', repId)
@@ -246,6 +253,37 @@ export default function TeamMemberPage() {
     }
   }
 
+  async function analyzeCall(callId: string, event: React.MouseEvent) {
+    event.stopPropagation() // Prevent opening call details modal
+    setAnalyzingCallId(callId)
+
+    try {
+      showToast('info', 'DSA analyse gestart... Dit kan 5-10 seconden duren')
+
+      const response = await fetch('/api/calls/analyze', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ callId })
+      })
+
+      const data = await response.json()
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Analyse mislukt')
+      }
+
+      showToast('success', `DSA analyse compleet! Score: ${data.score}/100`)
+
+      // Reload data to show new analysis
+      await loadRepData()
+    } catch (error) {
+      console.error('Analysis error:', error)
+      showToast('error', error instanceof Error ? error.message : 'Analyse mislukt')
+    } finally {
+      setAnalyzingCallId(null)
+    }
+  }
+
   async function handleArchiveRep() {
     if (!deletePassword) {
       showToast('error', 'Vul je wachtwoord in om te bevestigen')
@@ -357,10 +395,15 @@ export default function TeamMemberPage() {
 
   // Calculate stats
   const totalCalls = calls.length
-  const scores = calls
-    .filter(c => c.analysis && c.analysis.length > 0)
-    .map(c => c.analysis[0].framework_score)
 
+  // Only count sales calls for statistics (exclude non-sales calls)
+  const salesCallsWithAnalysis = calls.filter(c =>
+    c.analysis &&
+    c.analysis.length > 0 &&
+    c.analysis[0].is_sales_call !== false
+  )
+
+  const scores = salesCallsWithAnalysis.map(c => c.analysis[0].framework_score)
   const goodCalls = scores.filter(s => s >= 70).length // Goede gesprekken: score >= 70
   const badCalls = scores.filter(s => s < 70).length // Slechte gesprekken: score < 70
 
@@ -831,13 +874,20 @@ export default function TeamMemberPage() {
                         {/* Right: Score Badge + Arrow - Responsive */}
                         <div className="flex items-center justify-between sm:justify-end gap-2 sm:gap-3 ml-10 sm:ml-0 flex-shrink-0">
                           {status === 'completed' && analysis ? (
-                            <span className={`inline-flex items-center px-2.5 py-1 sm:px-3 sm:py-1.5 rounded-lg text-xs sm:text-sm font-medium ${
-                              score >= 80 ? 'bg-green-100 text-green-700' :
-                              score >= 50 ? 'bg-yellow-100 text-yellow-700' :
-                              'bg-red-100 text-red-700'
-                            }`}>
-                              <span className="hidden sm:inline">Score: </span>{score}
-                            </span>
+                            analysis.is_sales_call === false ? (
+                              <span className="inline-flex items-center px-2.5 py-1 sm:px-3 sm:py-1.5 rounded-lg text-xs sm:text-sm font-medium bg-gray-100 text-gray-700 border border-gray-300">
+                                <span className="hidden sm:inline">Geen sales call</span>
+                                <span className="sm:hidden">Geen sales</span>
+                              </span>
+                            ) : (
+                              <span className={`inline-flex items-center px-2.5 py-1 sm:px-3 sm:py-1.5 rounded-lg text-xs sm:text-sm font-medium ${
+                                score >= 80 ? 'bg-green-100 text-green-700' :
+                                score >= 50 ? 'bg-yellow-100 text-yellow-700' :
+                                'bg-red-100 text-red-700'
+                              }`}>
+                                <span className="hidden sm:inline">Score: </span>{score}
+                              </span>
+                            )
                           ) : status === 'analyzing' ? (
                             <span className="inline-flex items-center px-2.5 py-1 sm:px-3 sm:py-1.5 rounded-lg text-xs font-medium bg-blue-100 text-blue-700">
                               <svg className="animate-spin -ml-0.5 mr-1.5 h-3 w-3" fill="none" viewBox="0 0 24 24">
@@ -852,9 +902,29 @@ export default function TeamMemberPage() {
                               <span className="hidden sm:inline">In wachtrij</span>
                               <span className="sm:hidden">Wachtrij</span>
                             </span>
+                          ) : call.transcript && call.transcript.length > 50 ? (
+                            analyzingCallId === call.id ? (
+                              <span className="inline-flex items-center px-2.5 py-1 sm:px-3 sm:py-1.5 rounded-lg text-xs font-medium bg-blue-100 text-blue-700">
+                                <svg className="animate-spin -ml-0.5 mr-1.5 h-3 w-3" fill="none" viewBox="0 0 24 24">
+                                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                                </svg>
+                                <span className="hidden sm:inline">Analyseren...</span>
+                                <span className="sm:hidden">...</span>
+                              </span>
+                            ) : (
+                              <button
+                                onClick={(e) => analyzeCall(call.id, e)}
+                                className="inline-flex items-center gap-1.5 px-2.5 py-1 sm:px-3 sm:py-1.5 rounded-lg text-xs font-medium bg-gradient-to-r from-purple-600 to-indigo-600 text-white hover:from-purple-700 hover:to-indigo-700 transition-all shadow-sm hover:shadow-md"
+                              >
+                                <Sparkles className="w-3 h-3" />
+                                <span className="hidden sm:inline">DSA Analyseer</span>
+                                <span className="sm:hidden">Analyseer</span>
+                              </button>
+                            )
                           ) : (
                             <span className="text-xs text-gray-400">
-                              <span className="hidden sm:inline">Geen analyse</span>
+                              <span className="hidden sm:inline">Geen transcript</span>
                               <span className="sm:hidden">-</span>
                             </span>
                           )}
@@ -1228,27 +1298,37 @@ export default function TeamMemberPage() {
                       {/* Rating - Always show */}
                       <div className="mb-6">
                         {selectedCallAnalysis ? (
-                          (() => {
-                            const score = selectedCallAnalysis.framework_score || 0
-                            const getRating = (score: number) => {
-                              if (score >= 80) return { label: 'Goed', color: 'bg-green-100 text-green-700 border-green-200', icon: CheckCircle }
-                              if (score >= 50) return { label: 'Prima', color: 'bg-yellow-100 text-yellow-700 border-yellow-200', icon: TrendingUp }
-                              return { label: 'Slecht', color: 'bg-red-100 text-red-700 border-red-200', icon: AlertCircle }
-                            }
-                            const rating = getRating(score)
-                            const RatingIcon = rating.icon
-
-                            return (
-                              <div className="flex items-center gap-3">
-                                <span className="text-sm font-medium text-gray-600">Gesprek Score:</span>
-                                <div className={`inline-flex items-center gap-2 px-4 py-2 rounded-lg border-2 font-semibold ${rating.color}`}>
-                                  <RatingIcon className="w-5 h-5" />
-                                  <span>{rating.label}</span>
-                                  <span className="ml-2 opacity-75">({score}/100)</span>
-                                </div>
+                          selectedCallAnalysis.is_sales_call === false ? (
+                            <div className="flex items-center gap-3">
+                              <span className="text-sm font-medium text-gray-600">Call Type:</span>
+                              <div className="inline-flex items-center gap-2 px-4 py-2 rounded-lg border-2 font-semibold bg-gray-100 text-gray-700 border-gray-300">
+                                <AlertCircle className="w-5 h-5" />
+                                <span>Geen sales call</span>
                               </div>
-                            )
-                          })()
+                            </div>
+                          ) : (
+                            (() => {
+                              const score = selectedCallAnalysis.framework_score || 0
+                              const getRating = (score: number) => {
+                                if (score >= 80) return { label: 'Goed', color: 'bg-green-100 text-green-700 border-green-200', icon: CheckCircle }
+                                if (score >= 50) return { label: 'Prima', color: 'bg-yellow-100 text-yellow-700 border-yellow-200', icon: TrendingUp }
+                                return { label: 'Slecht', color: 'bg-red-100 text-red-700 border-red-200', icon: AlertCircle }
+                              }
+                              const rating = getRating(score)
+                              const RatingIcon = rating.icon
+
+                              return (
+                                <div className="flex items-center gap-3">
+                                  <span className="text-sm font-medium text-gray-600">Gesprek Score:</span>
+                                  <div className={`inline-flex items-center gap-2 px-4 py-2 rounded-lg border-2 font-semibold ${rating.color}`}>
+                                    <RatingIcon className="w-5 h-5" />
+                                    <span>{rating.label}</span>
+                                    <span className="ml-2 opacity-75">({score}/100)</span>
+                                  </div>
+                                </div>
+                              )
+                            })()
+                          )
                         ) : (
                           <div className="flex items-center gap-3">
                             <span className="text-sm font-medium text-gray-600">Gesprek Score:</span>
@@ -1260,88 +1340,152 @@ export default function TeamMemberPage() {
                         )}
                       </div>
 
-                          {/* Summary Card - Always show */}
-                          <div className={`rounded-lg border-2 p-5 mb-6 ${
-                            selectedCallAnalysis?.analysis_data?.summary
-                              ? 'bg-gradient-to-br from-indigo-50 to-blue-50 border-indigo-200'
-                              : 'bg-gray-50 border-gray-200'
-                          }`}>
-                            <h3 className="text-lg font-semibold text-gray-900 mb-3 flex items-center gap-2">
-                              <div className={`w-7 h-7 rounded-lg flex items-center justify-center ${
-                                selectedCallAnalysis?.analysis_data?.summary
-                                  ? 'bg-indigo-600'
-                                  : 'bg-gray-400'
-                              }`}>
-                                <Bot className="w-4 h-4 text-white" />
-                              </div>
-                              Samenvatting
+                          {/* Frankie de Closer Bot Analysis */}
+                          <div className="border border-gray-200 rounded-lg p-6 mb-6 bg-white">
+                            <h3 className="text-base font-semibold text-gray-900 mb-4 pb-3 border-b border-gray-200 flex items-center gap-2">
+                              <span className="text-xl">🤖</span>
+                              Frankie de Closer Bot
                             </h3>
 
-                            {selectedCallAnalysis?.analysis_data?.summary ? (
+                            {/* Check if analysis exists */}
+                            {selectedCallAnalysis ? (
                               <>
-                                <p className="text-gray-700 leading-relaxed mb-3">
-                                  <strong>{rep?.name || 'De sales rep'}</strong> heeft een call gedaan met{' '}
-                                  <strong>
-                                    {(() => {
-                                      if (!selectedCall.participants || selectedCall.participants.length === 0) return 'onbekende prospect'
-                                      const salesRepEmail = rep?.email?.toLowerCase()
-                                      const clientParticipant = selectedCall.participants.find((p: any) =>
-                                        p.email.toLowerCase() !== salesRepEmail
-                                      )
-                                      return clientParticipant?.name || 'een prospect'
-                                    })()}
-                                  </strong>.
-                                </p>
+                                {/* NON-SALES CALL - Single Chat Bubble */}
+                                {selectedCallAnalysis.is_sales_call === false ? (
+                                  <div className="py-2">
+                                    <div className="flex gap-3 items-end">
+                                      {/* Avatar */}
+                                      <div className="w-10 h-10 rounded-full bg-gradient-to-br from-purple-500 to-indigo-600 flex items-center justify-center flex-shrink-0 shadow-md">
+                                        <span className="text-xl">🤖</span>
+                                      </div>
 
-                                <div className="bg-white rounded-lg p-4 mb-4">
-                                  <p className="text-gray-700 leading-relaxed text-sm">
-                                    {selectedCallAnalysis.analysis_data.summary}
-                                  </p>
-                                </div>
+                                      {/* Single Speech Bubble with all content */}
+                                      <div className="flex-1 max-w-2xl">
+                                        <div className="flex items-baseline gap-2 mb-1 ml-1">
+                                          <span className="text-xs font-semibold text-gray-900">Frankie</span>
+                                          <span className="text-xs text-gray-400">net</span>
+                                        </div>
 
-                                {/* Strengths */}
-                                {selectedCallAnalysis.analysis_data.strengths && selectedCallAnalysis.analysis_data.strengths.length > 0 && (
-                                  <div className="mb-4">
-                                    <h4 className="text-sm font-semibold text-green-700 mb-2 flex items-center gap-1.5">
-                                      <CheckCircle className="w-4 h-4" />
-                                      Dit ging goed:
-                                    </h4>
-                                    <ul className="space-y-1.5">
-                                      {selectedCallAnalysis.analysis_data.strengths.map((strength: string, index: number) => (
-                                        <li key={index} className="text-sm text-gray-700 flex items-start gap-2">
-                                          <span className="text-green-600 mt-0.5">✓</span>
-                                          <span>{strength}</span>
-                                        </li>
-                                      ))}
-                                    </ul>
+                                        <div className="relative">
+                                          {/* Speech bubble tail */}
+                                          <div className="absolute -left-2 bottom-4 w-0 h-0 border-b-[14px] border-b-gray-100 border-r-[14px] border-r-transparent"></div>
+
+                                          {/* Main bubble */}
+                                          <div className="bg-gray-100 rounded-2xl rounded-bl-sm px-5 py-4 shadow-sm">
+                                            <div className="space-y-4">
+                                              {/* Greeting */}
+                                              <p className="text-sm text-gray-900 leading-relaxed">
+                                                Hey! Ik heb deze call geanalyseerd 👋
+                                              </p>
+
+                                              {/* Main finding */}
+                                              <p className="text-sm text-gray-900 leading-relaxed">
+                                                Dit is <span className="font-semibold">geen sales gesprek</span>. {selectedCallAnalysis.rejection_reason || 'Het gesprek heeft niet de kenmerken van een sales call.'}
+                                              </p>
+
+                                              {/* Details with tags */}
+                                              <div className="pt-3 border-t border-gray-200">
+                                                <p className="text-sm text-gray-900 leading-relaxed mb-2">
+                                                  Wat ik heb gevonden:
+                                                </p>
+                                                <div className="flex flex-wrap gap-2">
+                                                  <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-white text-gray-700 shadow-sm">
+                                                    📋 {selectedCallAnalysis.call_type === 'team_meeting' ? 'Team Meeting' :
+                                                         selectedCallAnalysis.call_type === 'demo' ? 'Demo' :
+                                                         selectedCallAnalysis.call_type === 'support' ? 'Support' :
+                                                         selectedCallAnalysis.call_type || 'Unknown'}
+                                                  </span>
+                                                  {selectedCallAnalysis.confidence_score && (
+                                                    <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-white text-green-700 shadow-sm">
+                                                      ✓ {(selectedCallAnalysis.confidence_score * 100).toFixed(0)}% zeker
+                                                    </span>
+                                                  )}
+                                                </div>
+                                              </div>
+
+                                              {/* Explanation */}
+                                              <div className="pt-3 border-t border-gray-200 bg-gradient-to-br from-indigo-50 to-purple-50 -mx-5 -mb-4 px-5 py-3 rounded-b-2xl">
+                                                <p className="text-sm text-gray-900 leading-relaxed">
+                                                  💡 <span className="font-medium">Daarom geen DSA score:</span> Het DSA framework analyseert alleen echte sales gesprekken met prospects/leads.
+                                                </p>
+                                              </div>
+                                            </div>
+                                          </div>
+                                        </div>
+                                      </div>
+                                    </div>
                                   </div>
-                                )}
+                                ) : selectedCallAnalysis.analysis_data?.coaching_feedback ? (
+                                  /* SALES CALL - Show full DSA analysis */
+                                  <div className="space-y-5">
+                                    {/* Coaching Feedback */}
+                                    <div>
+                                      <h4 className="text-sm font-semibold text-gray-900 mb-2">
+                                        Feedback:
+                                      </h4>
+                                      <p className="text-sm text-gray-700 leading-relaxed">
+                                        {selectedCallAnalysis.analysis_data.coaching_feedback}
+                                      </p>
+                                    </div>
 
-                                {/* Improvements */}
-                                {selectedCallAnalysis.analysis_data.improvements && selectedCallAnalysis.analysis_data.improvements.length > 0 && (
-                                  <div>
-                                    <h4 className="text-sm font-semibold text-orange-700 mb-2 flex items-center gap-1.5">
-                                      <TrendingUp className="w-4 h-4" />
-                                      Dit kan beter:
-                                    </h4>
-                                    <ul className="space-y-1.5">
-                                      {selectedCallAnalysis.analysis_data.improvements.map((improvement: string, index: number) => (
-                                        <li key={index} className="text-sm text-gray-700 flex items-start gap-2">
-                                          <span className="text-orange-600 mt-0.5">→</span>
-                                          <span>{improvement}</span>
-                                        </li>
-                                      ))}
-                                    </ul>
+                                    {/* Wins */}
+                                    {selectedCallAnalysis.analysis_data.wins && selectedCallAnalysis.analysis_data.wins.length > 0 && (
+                                      <div>
+                                        <h4 className="text-sm font-semibold text-gray-900 mb-2">
+                                          Dit ging goed:
+                                        </h4>
+                                        <ul className="space-y-1.5">
+                                          {selectedCallAnalysis.analysis_data.wins.map((win: string, index: number) => (
+                                            <li key={index} className="text-sm text-gray-700 leading-relaxed">
+                                              • {win}
+                                            </li>
+                                          ))}
+                                        </ul>
+                                      </div>
+                                    )}
+
+                                    {/* Improvements */}
+                                    {selectedCallAnalysis.analysis_data.improvements && selectedCallAnalysis.analysis_data.improvements.length > 0 && (
+                                      <div>
+                                        <h4 className="text-sm font-semibold text-gray-900 mb-2">
+                                          Dit moet beter:
+                                        </h4>
+                                        <ul className="space-y-1.5">
+                                          {selectedCallAnalysis.analysis_data.improvements.map((improvement: string, index: number) => (
+                                            <li key={index} className="text-sm text-gray-700 leading-relaxed">
+                                              • {improvement}
+                                            </li>
+                                          ))}
+                                        </ul>
+                                      </div>
+                                    )}
+
+                                    {/* Sales Spiegel */}
+                                    {selectedCallAnalysis.analysis_data.sales_spiegel_reflection && (
+                                      <div className="pt-4 border-t border-gray-200">
+                                        <h4 className="text-sm font-semibold text-gray-900 mb-2">
+                                          Zelfreflectie:
+                                        </h4>
+                                        <p className="text-sm text-gray-700 leading-relaxed">
+                                          {selectedCallAnalysis.analysis_data.sales_spiegel_reflection}
+                                        </p>
+                                      </div>
+                                    )}
+                                  </div>
+                                ) : (
+                                  <div className="text-center py-8">
+                                    <p className="text-sm text-gray-500">
+                                      Analyse wordt verwerkt...
+                                    </p>
                                   </div>
                                 )}
                               </>
                             ) : (
-                              <div className="bg-white rounded-lg p-4 border-2 border-dashed border-gray-300">
-                                <div className="flex items-center gap-2 text-gray-500 justify-center py-4">
-                                  <AlertCircle className="w-5 h-5" />
-                                  <span className="text-sm font-medium">Nog geen analyse beschikbaar</span>
-                                </div>
-                                <p className="text-xs text-gray-400 text-center mt-2">
+                              <div className="text-center py-8">
+                                <p className="text-sm text-gray-500">
+                                  Nog geen analyse beschikbaar
+                                </p>
+                                <p className="text-xs text-gray-400 mt-1">
                                   De AI-analyse wordt automatisch uitgevoerd zodra het transcript beschikbaar is
                                 </p>
                               </div>

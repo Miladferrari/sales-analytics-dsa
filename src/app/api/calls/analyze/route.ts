@@ -8,6 +8,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { analyzeCall } from '@/lib/analysis/openai-service'
+import { classifyCall } from '@/lib/analysis/call-classifier'
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!
@@ -79,7 +80,52 @@ export async function POST(request: NextRequest) {
       .update({ fathom_status: 'analyzing' })
       .eq('id', callId)
 
-    // 5. Analyze with OpenAI
+    // 5. FIRST: Classify the call (is it a sales call?)
+    console.log('🤖 Frankie de Closer Bot - Classifying call...')
+    const classification = await classifyCall(call.transcript)
+
+    // 6. If NOT a sales call, save rejection and return early
+    if (!classification.isSalesCall) {
+      console.log(`❌ Not a sales call - Type: ${classification.callType}`)
+      console.log(`📝 Reason: ${classification.rejectionReason}`)
+
+      await supabase
+        .from('analysis')
+        .insert({
+          call_id: callId,
+          is_sales_call: false,
+          call_type: classification.callType,
+          confidence_score: classification.confidence,
+          rejection_reason: classification.rejectionReason,
+          framework_score: null,
+          sentiment_score: null,
+          key_topics: [classification.callType],
+          analysis_data: {
+            classification: classification,
+            message: 'Dit is geen sales call - DSA analyse overgeslagen'
+          },
+          analyzed_at: new Date().toISOString()
+        })
+        .select()
+        .single()
+
+      await supabase
+        .from('calls')
+        .update({ fathom_status: 'completed' })
+        .eq('id', callId)
+
+      return NextResponse.json({
+        success: true,
+        message: 'Call classified as non-sales',
+        callId,
+        isSalesCall: false,
+        callType: classification.callType,
+        rejectionReason: classification.rejectionReason
+      })
+    }
+
+    // 7. YES, it's a sales call! Proceed with DSA analysis
+    console.log('✅ Confirmed sales call - Starting DSA analysis...')
     const analysisResult = await analyzeCall({
       transcript: call.transcript,
       callId: call.id,
@@ -88,11 +134,17 @@ export async function POST(request: NextRequest) {
       callDuration: call.duration
     })
 
-    // 6. Save DSA analysis to database
+    // 8. Save DSA analysis to database (WITH classification data)
     const { data: savedAnalysis, error: saveError } = await supabase
       .from('analysis')
       .insert({
         call_id: callId,
+        // Classification fields
+        is_sales_call: true,
+        call_type: 'sales_call',
+        confidence_score: classification.confidence,
+        rejection_reason: null,
+        // DSA scores
         framework_score: analysisResult.overall_score,
         sentiment_score: calculateSentimentScore(analysisResult),
         key_topics: extractDSAKeyTopics(analysisResult),
@@ -108,7 +160,9 @@ export async function POST(request: NextRequest) {
           coaching_feedback: analysisResult.coaching_feedback,
           sales_spiegel_reflection: analysisResult.sales_spiegel_reflection,
           model: analysisResult.model,
-          tokensUsed: analysisResult.tokensUsed
+          tokensUsed: analysisResult.tokensUsed,
+          // Classification metadata
+          classification: classification
         },
         analyzed_at: new Date().toISOString()
       })
