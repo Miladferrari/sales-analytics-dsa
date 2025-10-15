@@ -4,10 +4,16 @@ import { useEffect, useState } from 'react'
 import { useRouter, useParams } from 'next/navigation'
 import { supabase } from '@/lib/supabase/client'
 import DashboardLayout from '@/components/DashboardLayout'
-import { ArrowLeft, Phone, TrendingUp, CircleAlert, CircleCheckBig, Mail, ChevronRight, Plus, X, ExternalLink, Clock, Calendar, AlertCircle, CheckCircle, Bot, RefreshCw } from 'lucide-react'
+import { ArrowLeft, Phone, TrendingUp, CircleAlert, CircleCheckBig, Mail, ChevronRight, Plus, X, ExternalLink, Clock, Calendar, AlertCircle, CheckCircle, Bot, RefreshCw, XCircle } from 'lucide-react'
 import { format, addDays, startOfWeek, subDays, parseISO } from 'date-fns'
 import { nl } from 'date-fns/locale'
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts'
+
+interface Toast {
+  id: number
+  type: 'success' | 'error' | 'info'
+  message: string
+}
 
 export default function TeamMemberPage() {
   const router = useRouter()
@@ -35,6 +41,19 @@ export default function TeamMemberPage() {
   const [selectedTeams, setSelectedTeams] = useState<string[]>([])
   const [loadingTeams, setLoadingTeams] = useState(false)
   const [savingTeams, setSavingTeams] = useState(false)
+
+  // Toast Notifications State
+  const [toasts, setToasts] = useState<Toast[]>([])
+
+  function showToast(type: 'success' | 'error' | 'info', message: string) {
+    const id = Date.now()
+    setToasts(prev => [...prev, { id, type, message }])
+
+    // Auto-remove after 5 seconds
+    setTimeout(() => {
+      setToasts(prev => prev.filter(toast => toast.id !== id))
+    }, 5000)
+  }
 
   // Mock upcoming calls data (will be replaced with Zoom/Google Calendar integration)
   const upcomingCalls = [
@@ -185,9 +204,10 @@ export default function TeamMemberPage() {
       // Refresh rep data
       await loadRepData()
       setShowEditTeamsModal(false)
+      showToast('success', 'Fathom teams succesvol opgeslagen')
     } catch (error) {
       console.error('Error saving teams:', error)
-      alert('Er is een fout opgetreden bij het opslaan van teams')
+      showToast('error', 'Er is een fout opgetreden bij het opslaan van teams')
     } finally {
       setSavingTeams(false)
     }
@@ -196,13 +216,23 @@ export default function TeamMemberPage() {
   async function handleRefreshCalls() {
     setRefreshing(true)
     try {
-      // Step 1: Trigger Fathom sync
-      console.log('🔄 Triggering Fathom sync...')
-      const syncResponse = await fetch('/api/cron/sync-fathom', {
+      // Get saved sync preference from localStorage (default: 24 hours)
+      const savedPreference = localStorage.getItem('fathomSyncPeriod')
+      const hours = savedPreference ? parseInt(savedPreference) : 24
+
+      // Step 1: Trigger Fathom sync with user preference
+      console.log(`🔄 Triggering Fathom sync (${hours}h)...`)
+      const syncResponse = await fetch(`/api/cron/sync-fathom?hours=${hours}`, {
         method: 'POST'
       })
       const syncResult = await syncResponse.json()
       console.log('✅ Sync result:', syncResult)
+
+      // Show success message with details
+      if (syncResult.success) {
+        const periodLabel = hours === 24 ? '24 uur' : hours === 168 ? '7 dagen' : '30 dagen'
+        showToast('success', `Sync voltooid! ${syncResult.imported} nieuwe gesprekken geïmporteerd, ${syncResult.skipped} geskipped`)
+      }
 
       // Step 2: Reload calls data
       await loadRepData()
@@ -210,7 +240,7 @@ export default function TeamMemberPage() {
       console.log('✅ Calls refreshed successfully')
     } catch (error) {
       console.error('❌ Error refreshing calls:', error)
-      alert('Er is een fout opgetreden bij het verversen')
+      showToast('error', 'Er is een fout opgetreden bij het verversen')
     } finally {
       setRefreshing(false)
     }
@@ -218,7 +248,7 @@ export default function TeamMemberPage() {
 
   async function handleArchiveRep() {
     if (!deletePassword) {
-      alert('Vul je wachtwoord in om te bevestigen')
+      showToast('error', 'Vul je wachtwoord in om te bevestigen')
       return
     }
 
@@ -232,7 +262,7 @@ export default function TeamMemberPage() {
       })
 
       if (authError || !user) {
-        alert('❌ Incorrect wachtwoord')
+        showToast('error', 'Incorrect wachtwoord')
         setDeleteLoading(false)
         return
       }
@@ -245,15 +275,15 @@ export default function TeamMemberPage() {
 
       if (updateError) {
         console.error('Archive error:', updateError)
-        alert('Er is een fout opgetreden bij het archiveren')
+        showToast('error', 'Er is een fout opgetreden bij het archiveren')
         return
       }
 
-      alert(`✅ ${rep.name} is gearchiveerd en verplaatst naar het archief`)
+      showToast('success', `${rep.name} is gearchiveerd en verplaatst naar het archief`)
       router.push('/dashboard/team')
     } catch (error) {
       console.error('Error archiving rep:', error)
-      alert('Er is een fout opgetreden')
+      showToast('error', 'Er is een fout opgetreden')
     } finally {
       setDeleteLoading(false)
     }
@@ -261,7 +291,7 @@ export default function TeamMemberPage() {
 
   async function handleUnarchiveRep() {
     if (!unarchivePassword) {
-      alert('Vul je wachtwoord in om te bevestigen')
+      showToast('error', 'Vul je wachtwoord in om te bevestigen')
       return
     }
 
@@ -275,7 +305,7 @@ export default function TeamMemberPage() {
       })
 
       if (authError || !user) {
-        alert('❌ Incorrect wachtwoord')
+        showToast('error', 'Incorrect wachtwoord')
         setUnarchiveLoading(false)
         return
       }
@@ -288,15 +318,15 @@ export default function TeamMemberPage() {
 
       if (updateError) {
         console.error('Unarchive error:', updateError)
-        alert('Er is een fout opgetreden bij het terugzetten')
+        showToast('error', 'Er is een fout opgetreden bij het terugzetten')
         return
       }
 
-      alert(`✅ ${rep.name} is teruggezet naar actieve medewerkers`)
+      showToast('success', `${rep.name} is teruggezet naar actieve medewerkers`)
       router.push('/dashboard/team')
     } catch (error) {
       console.error('Error unarchiving rep:', error)
-      alert('Er is een fout opgetreden')
+      showToast('error', 'Er is een fout opgetreden')
     } finally {
       setUnarchiveLoading(false)
     }
@@ -1461,6 +1491,43 @@ export default function TeamMemberPage() {
           </div>
         </div>
       )}
+
+      {/* Toast Notifications */}
+      <div className="fixed bottom-4 right-4 z-50 space-y-2">
+        {toasts.map((toast) => (
+          <div
+            key={toast.id}
+            className={`flex items-start gap-3 p-4 rounded-lg shadow-lg border-2 min-w-[300px] max-w-md animate-slide-in ${
+              toast.type === 'success'
+                ? 'bg-green-50 border-green-200 text-green-900'
+                : toast.type === 'error'
+                ? 'bg-red-50 border-red-200 text-red-900'
+                : 'bg-blue-50 border-blue-200 text-blue-900'
+            }`}
+          >
+            {toast.type === 'success' && (
+              <CheckCircle className="w-5 h-5 text-green-600 flex-shrink-0" />
+            )}
+            {toast.type === 'error' && (
+              <XCircle className="w-5 h-5 text-red-600 flex-shrink-0" />
+            )}
+            {toast.type === 'info' && (
+              <AlertCircle className="w-5 h-5 text-blue-600 flex-shrink-0" />
+            )}
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-medium">{toast.message}</p>
+            </div>
+            <button
+              onClick={() => setToasts(prev => prev.filter(t => t.id !== toast.id))}
+              className="text-gray-400 hover:text-gray-600 transition-colors flex-shrink-0"
+            >
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+          </div>
+        ))}
+      </div>
     </DashboardLayout>
   )
 }

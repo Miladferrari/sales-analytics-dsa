@@ -5,9 +5,15 @@ import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase/client'
 import { getUser } from '@/lib/supabase/auth'
 import { SalesRep } from '@/types'
-import { User, Search, Clock, Mail, ChevronRight } from 'lucide-react'
+import { User, Search, Clock, Mail, ChevronRight, CheckCircle, XCircle, AlertCircle } from 'lucide-react'
 import Link from 'next/link'
 import DashboardLayout from '@/components/DashboardLayout'
+
+interface Toast {
+  id: number
+  type: 'success' | 'error' | 'info'
+  message: string
+}
 
 export default function TeamPage() {
   const router = useRouter()
@@ -36,6 +42,19 @@ export default function TeamPage() {
   const [availableTeams, setAvailableTeams] = useState<string[]>([])
   const [selectedTeams, setSelectedTeams] = useState<string[]>([])
   const [loadingTeams, setLoadingTeams] = useState(false)
+
+  // Toast Notifications State
+  const [toasts, setToasts] = useState<Toast[]>([])
+
+  function showToast(type: 'success' | 'error' | 'info', message: string) {
+    const id = Date.now()
+    setToasts(prev => [...prev, { id, type, message }])
+
+    // Auto-remove after 5 seconds
+    setTimeout(() => {
+      setToasts(prev => prev.filter(toast => toast.id !== id))
+    }, 5000)
+  }
 
   useEffect(() => {
     loadUser()
@@ -196,14 +215,14 @@ export default function TeamPage() {
     try {
       // Validate email
       if (!formData.email || !formData.email.includes('@')) {
-        alert('Vul een geldig email adres in')
+        showToast('error', 'Vul een geldig email adres in')
         setAddLoading(false)
         return
       }
 
       // Validate name
       if (!formData.name || formData.name.trim().length < 2) {
-        alert('Vul een geldige naam in (minimaal 2 karakters)')
+        showToast('error', 'Vul een geldige naam in (minimaal 2 karakters)')
         setAddLoading(false)
         return
       }
@@ -222,9 +241,9 @@ export default function TeamPage() {
       if (error) {
         console.error('Supabase error:', error)
         if (error.code === '23505') {
-          alert('Deze email bestaat al in het systeem')
+          showToast('error', 'Deze email bestaat al in het systeem')
         } else {
-          alert('Fout bij toevoegen medewerker: ' + error.message)
+          showToast('error', 'Fout bij toevoegen medewerker: ' + error.message)
         }
         return
       }
@@ -240,10 +259,10 @@ export default function TeamPage() {
       // Reload reps list
       await loadReps()
 
-      alert(`✅ Medewerker succesvol toegevoegd!\n\n📧 Email: ${data.email}\n\n💡 Deze medewerker kan nu Fathom calls opnemen en die worden automatisch geïmporteerd in het CRM!`)
+      showToast('success', `Medewerker succesvol toegevoegd! Deze medewerker kan nu Fathom calls opnemen en die worden automatisch geïmporteerd.`)
     } catch (error) {
       console.error('Error adding member:', error)
-      alert('Er is een fout opgetreden bij het toevoegen van de medewerker.')
+      showToast('error', 'Er is een fout opgetreden bij het toevoegen van de medewerker.')
     } finally {
       setAddLoading(false)
     }
@@ -746,6 +765,43 @@ export default function TeamPage() {
           </div>
         </div>
       )}
+
+      {/* Toast Notifications */}
+      <div className="fixed bottom-4 right-4 z-50 space-y-2">
+        {toasts.map((toast) => (
+          <div
+            key={toast.id}
+            className={`flex items-start gap-3 p-4 rounded-lg shadow-lg border-2 min-w-[300px] max-w-md animate-slide-in ${
+              toast.type === 'success'
+                ? 'bg-green-50 border-green-200 text-green-900'
+                : toast.type === 'error'
+                ? 'bg-red-50 border-red-200 text-red-900'
+                : 'bg-blue-50 border-blue-200 text-blue-900'
+            }`}
+          >
+            {toast.type === 'success' && (
+              <CheckCircle className="w-5 h-5 text-green-600 flex-shrink-0" />
+            )}
+            {toast.type === 'error' && (
+              <XCircle className="w-5 h-5 text-red-600 flex-shrink-0" />
+            )}
+            {toast.type === 'info' && (
+              <AlertCircle className="w-5 h-5 text-blue-600 flex-shrink-0" />
+            )}
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-medium">{toast.message}</p>
+            </div>
+            <button
+              onClick={() => setToasts(prev => prev.filter(t => t.id !== toast.id))}
+              className="text-gray-400 hover:text-gray-600 transition-colors flex-shrink-0"
+            >
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+          </div>
+        ))}
+      </div>
     </DashboardLayout>
   )
 }

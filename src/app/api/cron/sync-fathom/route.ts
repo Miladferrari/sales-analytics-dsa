@@ -276,29 +276,23 @@ async function processCall(
     }
   }
 
-  // FILTER 2: Smart participant detection (handles both calendar invites AND link-based joins)
-  // Scenario 1: 2+ calendar invitees → Import (traditional way)
-  // Scenario 2: 1 invitee BUT transcript shows multiple speakers → Import (link-based join)
-  // Scenario 3: 1 invitee AND no/single speaker → Skip (solo "My Call")
+  // FILTER 2: Import all calls from active sales reps
+  // We now import ALL calls, including solo calls
+  // The sales rep can review and delete unwanted calls later
 
-  const hasMultipleInvitees = call.participants.length >= 2
+  const participantCount = call.participants.length
 
-  if (!hasMultipleInvitees) {
-    // Only 1 calendar invitee - check if someone joined via link (detected in transcript)
+  if (participantCount >= 2) {
+    console.log(`✅ Call ${call.id} has ${participantCount} calendar invitees - importing`)
+  } else if (participantCount === 1) {
     const hasMultipleSpeakers = detectMultipleSpeakers(call.transcript)
-
     if (hasMultipleSpeakers) {
       console.log(`✅ Call ${call.id} has 1 calendar invitee but transcript shows multiple speakers (link-based join) - importing`)
     } else {
-      console.log(`⏭️  Call ${call.id} has only 1 participant and no multiple speakers detected - skipping (solo "My Call")`)
-      return {
-        fathom_call_id: call.id,
-        status: 'skipped',
-        reason: 'Solo call with 1 participant and no multiple speakers in transcript'
-      }
+      console.log(`✅ Call ${call.id} is a solo call - importing anyway (solo calls are now allowed)`)
     }
   } else {
-    console.log(`✅ Call ${call.id} has ${call.participants.length} calendar invitees - importing`)
+    console.log(`✅ Call ${call.id} has ${participantCount} participants - importing`)
   }
 
   // Match sales rep from participants

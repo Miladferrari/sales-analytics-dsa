@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation'
 import DashboardLayout from '@/components/DashboardLayout'
 import { getUser } from '@/lib/supabase/auth'
 import { supabase } from '@/lib/supabase/client'
-import { RefreshCw, Clock, CheckCircle, XCircle, AlertCircle, Loader2, Users, Mail, UserPlus, Trash2, User, Eye, EyeOff } from 'lucide-react'
+import { RefreshCw, Clock, CheckCircle, XCircle, AlertCircle, Loader2, Users, Mail, UserPlus, Trash2, User, Eye, EyeOff, Save, HelpCircle } from 'lucide-react'
 
 interface SyncResult {
   success: boolean
@@ -29,6 +29,12 @@ interface CRMUser {
   last_sign_in_at?: string | null
 }
 
+interface Toast {
+  id: number
+  type: 'success' | 'error' | 'info'
+  message: string
+}
+
 export default function SettingsPage() {
   const router = useRouter()
   const [user, setUser] = useState<any>(null)
@@ -38,7 +44,7 @@ export default function SettingsPage() {
   const [lastSyncTime, setLastSyncTime] = useState<string | null>(null)
 
   // Settings Navigation State
-  const [activeTab, setActiveTab] = useState<'sync' | 'users'>('sync')
+  const [activeTab, setActiveTab] = useState<'sync' | 'users' | 'faq'>('sync')
 
   // User Management State
   const [users, setUsers] = useState<CRMUser[]>([])
@@ -54,11 +60,59 @@ export default function SettingsPage() {
     adminPassword: ''
   })
 
+  // Delete User State
+  const [showDeleteModal, setShowDeleteModal] = useState(false)
+  const [userToDelete, setUserToDelete] = useState<CRMUser | null>(null)
+  const [deleting, setDeleting] = useState(false)
+
+  // Resend Invitation State
+  const [resending, setResending] = useState<string | null>(null) // stores user ID being processed
+
+  // Sync Voorkeur State
+  const [defaultSyncHours, setDefaultSyncHours] = useState<number>(24) // 24, 168 (7 days), or 720 (30 days)
+  const [savingSyncPreference, setSavingSyncPreference] = useState(false)
+  const [showManualSync, setShowManualSync] = useState(false) // Toggle for manual sync section
+
+  // Toast Notifications State
+  const [toasts, setToasts] = useState<Toast[]>([])
+
+  function showToast(type: 'success' | 'error' | 'info', message: string) {
+    const id = Date.now()
+    setToasts(prev => [...prev, { id, type, message }])
+
+    // Auto-remove after 5 seconds
+    setTimeout(() => {
+      setToasts(prev => prev.filter(toast => toast.id !== id))
+    }, 5000)
+  }
+
   useEffect(() => {
     loadUser()
     loadLastSyncTime()
     loadUsers()
+    loadSyncPreference()
   }, [])
+
+  function loadSyncPreference() {
+    const savedPreference = localStorage.getItem('fathomSyncPeriod')
+    if (savedPreference) {
+      setDefaultSyncHours(parseInt(savedPreference))
+    }
+  }
+
+  function saveSyncPreference() {
+    setSavingSyncPreference(true)
+    try {
+      localStorage.setItem('fathomSyncPeriod', defaultSyncHours.toString())
+      const label = defaultSyncHours === 24 ? '24 uur' : defaultSyncHours === 168 ? '7 dagen' : '30 dagen'
+      showToast('success', `Sync voorkeur opgeslagen: ${label}`)
+    } catch (error) {
+      console.error('Error saving sync preference:', error)
+      showToast('error', 'Fout bij opslaan voorkeur')
+    } finally {
+      setSavingSyncPreference(false)
+    }
+  }
 
   async function loadUser() {
     try {
@@ -214,7 +268,7 @@ export default function SettingsPage() {
       }
 
       // Success!
-      alert(`✅ Gebruiker succesvol toegevoegd!\n\n📧 Een uitnodigingsmail is gestuurd naar ${newUser.email}\n\n💡 De gebruiker kan hun wachtwoord instellen via de link in de email.`)
+      showToast('success', `Gebruiker succesvol toegevoegd! Een uitnodigingsmail is gestuurd naar ${newUser.email}`)
 
       // Reset form and close modal
       closeAddUserModal()
@@ -227,6 +281,107 @@ export default function SettingsPage() {
       setAddUserError(error instanceof Error ? error.message : 'Er is een onbekende fout opgetreden')
     } finally {
       setAddingUser(false)
+    }
+  }
+
+  function openDeleteModal(user: CRMUser) {
+    setUserToDelete(user)
+    setShowDeleteModal(true)
+  }
+
+  function closeDeleteModal() {
+    setUserToDelete(null)
+    setShowDeleteModal(false)
+  }
+
+  async function handleDeleteUser() {
+    if (!userToDelete) return
+
+    setDeleting(true)
+
+    try {
+      // Get current session token
+      const { data: { session } } = await supabase.auth.getSession()
+
+      if (!session) {
+        showToast('error', 'Geen geldige sessie. Log opnieuw in.')
+        setDeleting(false)
+        return
+      }
+
+      // Call API to delete user
+      const response = await fetch(`/api/users/${userToDelete.id}`, {
+        method: 'DELETE',
+        headers: {
+          'Authorization': `Bearer ${session.access_token}`
+        }
+      })
+
+      const data = await response.json()
+
+      if (!response.ok) {
+        showToast('error', data.error || 'Fout bij verwijderen gebruiker')
+        setDeleting(false)
+        return
+      }
+
+      // Success! First remove from local state (optimistic update)
+      setUsers(prevUsers => prevUsers.filter(u => u.id !== userToDelete.id))
+
+      // Close modal
+      closeDeleteModal()
+
+      // Show success message
+      showToast('success', `Gebruiker ${userToDelete.email} succesvol verwijderd!`)
+
+      // Reload users list from server to ensure sync
+      await loadUsers()
+
+    } catch (error) {
+      console.error('Error deleting user:', error)
+      showToast('error', error instanceof Error ? error.message : 'Er is een onbekende fout opgetreden')
+    } finally {
+      setDeleting(false)
+    }
+  }
+
+  async function handleResendInvitation(user: CRMUser) {
+    setResending(user.id)
+
+    try {
+      // Get current session token
+      const { data: { session } } = await supabase.auth.getSession()
+
+      if (!session) {
+        showToast('error', 'Geen geldige sessie. Log opnieuw in.')
+        setResending(null)
+        return
+      }
+
+      // Call API to resend invitation
+      const response = await fetch(`/api/users/${user.id}/resend`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${session.access_token}`
+        }
+      })
+
+      const data = await response.json()
+
+      if (!response.ok) {
+        showToast('error', data.error || 'Fout bij versturen uitnodiging')
+        setResending(null)
+        return
+      }
+
+      // Success!
+      showToast('success', `Uitnodiging succesvol opnieuw verstuurd naar ${data.email}!`)
+
+    } catch (error) {
+      console.error('Error resending invitation:', error)
+      showToast('error', error instanceof Error ? error.message : 'Er is een onbekende fout opgetreden')
+    } finally {
+      setResending(null)
     }
   }
 
@@ -301,6 +456,7 @@ export default function SettingsPage() {
   const settingsMenu = [
     { id: 'sync' as const, label: 'Fathom Sync', icon: RefreshCw, color: 'indigo' },
     { id: 'users' as const, label: 'Gebruikersbeheer', icon: Users, color: 'green' },
+    { id: 'faq' as const, label: 'FAQ', icon: HelpCircle, color: 'blue' },
   ]
 
   return (
@@ -309,18 +465,18 @@ export default function SettingsPage() {
         {/* Main Content */}
         <div className="flex-1 min-w-0">
           {/* Header */}
-          <div className="mb-6 sm:mb-8">
-            <h1 className="text-xl sm:text-2xl font-semibold text-gray-900 mb-1">Instellingen</h1>
+          <div className="mb-4 sm:mb-6 lg:mb-8">
+            <h1 className="text-lg sm:text-xl lg:text-2xl font-semibold text-gray-900 mb-1">Instellingen</h1>
             <p className="text-xs sm:text-sm text-gray-500">Beheer je CRM configuratie en integraties</p>
           </div>
 
           {/* Settings Container with Sidebar */}
           <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
-            <div className="flex flex-col md:flex-row">
+            <div className="flex flex-col lg:flex-row">
               {/* Left Sidebar Navigation */}
-              <div className="md:w-64 border-b md:border-b-0 md:border-r border-gray-200 bg-gray-50">
-                <div className="p-4">
-                  <nav className="space-y-1">
+              <div className="lg:w-64 border-b lg:border-b-0 lg:border-r border-gray-200 bg-gray-50">
+                <div className="p-3 sm:p-4">
+                  <nav className="flex lg:flex-col gap-2 lg:space-y-1 overflow-x-auto lg:overflow-x-visible">
                     {settingsMenu.map((item) => {
                       const Icon = item.icon
                       const isActive = activeTab === item.id
@@ -328,24 +484,28 @@ export default function SettingsPage() {
                       // Define colors based on item type
                       const activeColors = item.id === 'sync'
                         ? 'bg-indigo-50 text-indigo-700 border border-indigo-200'
-                        : 'bg-green-50 text-green-700 border border-green-200'
+                        : item.id === 'users'
+                        ? 'bg-green-50 text-green-700 border border-green-200'
+                        : 'bg-blue-50 text-blue-700 border border-blue-200'
 
                       const iconColor = item.id === 'sync'
                         ? 'text-indigo-600'
-                        : 'text-green-600'
+                        : item.id === 'users'
+                        ? 'text-green-600'
+                        : 'text-blue-600'
 
                       return (
                         <button
                           key={item.id}
                           onClick={() => setActiveTab(item.id)}
-                          className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium transition-all ${
+                          className={`flex items-center justify-center lg:justify-start gap-2 lg:gap-3 px-3 lg:px-4 py-2.5 lg:py-3 rounded-lg text-xs sm:text-sm font-medium transition-all whitespace-nowrap lg:w-full ${
                             isActive
                               ? activeColors
                               : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'
                           }`}
                         >
-                          <Icon className={`w-5 h-5 ${isActive ? iconColor : 'text-gray-400'}`} />
-                          <span>{item.label}</span>
+                          <Icon className={`w-4 h-4 lg:w-5 lg:h-5 flex-shrink-0 ${isActive ? iconColor : 'text-gray-400'}`} />
+                          <span className="hidden sm:inline">{item.label}</span>
                         </button>
                       )
                     })}
@@ -359,19 +519,108 @@ export default function SettingsPage() {
                 {/* Fathom Sync Content */}
                 {activeTab === 'sync' && (
                   <div>
-                    <div className="border-b border-gray-200 bg-gradient-to-r from-indigo-50 to-purple-50 px-5 sm:px-6 py-4">
-                      <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 bg-indigo-600 rounded-lg flex items-center justify-center">
-                          <RefreshCw className="w-5 h-5 text-white" />
+                    <div className="border-b border-gray-200 bg-gradient-to-r from-indigo-50 to-purple-50 px-4 sm:px-5 lg:px-6 py-3 sm:py-4">
+                      <div className="flex items-center gap-2 sm:gap-3">
+                        <div className="w-8 h-8 sm:w-10 sm:h-10 bg-indigo-600 rounded-lg flex items-center justify-center flex-shrink-0">
+                          <RefreshCw className="w-4 h-4 sm:w-5 sm:h-5 text-white" />
                         </div>
-                        <div>
-                          <h2 className="text-base sm:text-lg font-semibold text-gray-900">Fathom Sync</h2>
-                          <p className="text-xs sm:text-sm text-gray-600">Synchroniseer calls van Fathom naar je CRM</p>
+                        <div className="min-w-0">
+                          <h2 className="text-sm sm:text-base lg:text-lg font-semibold text-gray-900">Fathom Sync</h2>
+                          <p className="text-xs sm:text-sm text-gray-600 truncate">Synchroniseer calls van Fathom naar je CRM</p>
                         </div>
                       </div>
                     </div>
 
-                    <div className="p-5 sm:p-6">
+                    <div className="p-4 sm:p-5 lg:p-6">
+              {/* Default Sync Periode Voorkeur */}
+              <div className="mb-6 p-4 bg-gradient-to-r from-blue-50 to-indigo-50 border border-indigo-200 rounded-lg">
+                <div className="flex items-start justify-between mb-3">
+                  <div>
+                    <h3 className="text-sm font-semibold text-gray-900 mb-1">Default Sync Periode</h3>
+                    <p className="text-xs text-gray-600">
+                      Deze instelling wordt gebruikt voor de "Ververs" knop op sales rep profielen
+                    </p>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-3">
+                  <button
+                    onClick={() => setDefaultSyncHours(24)}
+                    className={`px-3 py-3 rounded-lg border-2 transition-all text-left ${
+                      defaultSyncHours === 24
+                        ? 'bg-indigo-100 border-indigo-400 text-indigo-900'
+                        : 'bg-white border-gray-200 text-gray-700 hover:border-gray-300'
+                    }`}
+                  >
+                    <div className="flex items-center gap-2 mb-1">
+                      {defaultSyncHours === 24 && (
+                        <svg className="w-4 h-4 text-indigo-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                        </svg>
+                      )}
+                      <span className="font-semibold text-sm">24 Uur</span>
+                    </div>
+                    <p className="text-xs text-gray-600">Dagelijks</p>
+                  </button>
+
+                  <button
+                    onClick={() => setDefaultSyncHours(168)}
+                    className={`px-3 py-3 rounded-lg border-2 transition-all text-left ${
+                      defaultSyncHours === 168
+                        ? 'bg-indigo-100 border-indigo-400 text-indigo-900'
+                        : 'bg-white border-gray-200 text-gray-700 hover:border-gray-300'
+                    }`}
+                  >
+                    <div className="flex items-center gap-2 mb-1">
+                      {defaultSyncHours === 168 && (
+                        <svg className="w-4 h-4 text-indigo-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                        </svg>
+                      )}
+                      <span className="font-semibold text-sm">7 Dagen</span>
+                    </div>
+                    <p className="text-xs text-gray-600">Wekelijks</p>
+                  </button>
+
+                  <button
+                    onClick={() => setDefaultSyncHours(720)}
+                    className={`px-3 py-3 rounded-lg border-2 transition-all text-left ${
+                      defaultSyncHours === 720
+                        ? 'bg-indigo-100 border-indigo-400 text-indigo-900'
+                        : 'bg-white border-gray-200 text-gray-700 hover:border-gray-300'
+                    }`}
+                  >
+                    <div className="flex items-center gap-2 mb-1">
+                      {defaultSyncHours === 720 && (
+                        <svg className="w-4 h-4 text-indigo-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                        </svg>
+                      )}
+                      <span className="font-semibold text-sm">30 Dagen</span>
+                    </div>
+                    <p className="text-xs text-gray-600">Maandelijks</p>
+                  </button>
+                </div>
+
+                <button
+                  onClick={saveSyncPreference}
+                  disabled={savingSyncPreference}
+                  className="w-full px-4 py-2 bg-indigo-600 text-white text-sm font-medium rounded-lg hover:bg-indigo-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                >
+                  {savingSyncPreference ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                      Opslaan...
+                    </>
+                  ) : (
+                    <>
+                      <Save className="w-4 h-4" />
+                      Voorkeur Opslaan
+                    </>
+                  )}
+                </button>
+              </div>
+
               {/* Last Sync Info */}
               {lastSyncTime && (
                 <div className="mb-5 sm:mb-6 flex items-center gap-2 text-xs sm:text-sm text-gray-600 bg-gray-50 rounded-lg p-3">
@@ -380,25 +629,84 @@ export default function SettingsPage() {
                 </div>
               )}
 
+              {/* Emergency/Backup Manual Sync - Collapsible */}
+              <div className="mb-5 sm:mb-6">
+                <button
+                  onClick={() => setShowManualSync(!showManualSync)}
+                  className="w-full flex items-center justify-between p-4 bg-gray-50 border-2 border-gray-200 rounded-lg hover:bg-gray-100 hover:border-gray-300 transition-all"
+                >
+                  <div className="flex items-center gap-3">
+                    <div className="w-8 h-8 bg-orange-100 rounded-lg flex items-center justify-center">
+                      <AlertCircle className="w-4 h-4 text-orange-600" />
+                    </div>
+                    <div className="text-left">
+                      <h3 className="text-sm font-semibold text-gray-900">Fathom Sync Reset</h3>
+                      <p className="text-xs text-gray-600">Bulk sync voor alle sales reps (noodoptie)</p>
+                    </div>
+                  </div>
+                  <svg
+                    className={`w-5 h-5 text-gray-400 transition-transform duration-200 ${showManualSync ? 'rotate-180' : ''}`}
+                    fill="none"
+                    viewBox="0 0 24 24"
+                    stroke="currentColor"
+                  >
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                  </svg>
+                </button>
+
+                {/* Collapsible Manual Sync Section */}
+                {showManualSync && (
+                  <div className="mt-4 p-4 bg-orange-50/50 border-2 border-orange-200 rounded-lg">
+                    <div className="mb-4">
+                      <div className="flex items-center gap-2 mb-2">
+                        <AlertCircle className="w-4 h-4 text-orange-600" />
+                        <p className="text-xs font-semibold text-orange-900">Gebruik alleen bij problemen</p>
+                      </div>
+                      <p className="text-xs text-orange-800">
+                        Deze sync importeert calls voor <strong>alle actieve sales reps</strong> in één keer.
+                        Gebruik dit alleen na technische problemen of initiële setup.
+                      </p>
+                    </div>
+
               {/* Sync Buttons */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-5 mb-5 sm:mb-6">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
                 {/* Quick Sync - 24 hours */}
                 <button
                   onClick={() => handleSync(24)}
                   disabled={syncing}
-                  className="group relative p-5 sm:p-6 border-2 border-gray-200 rounded-lg hover:border-indigo-300 hover:bg-indigo-50 hover:shadow-md transition-all disabled:opacity-50 disabled:cursor-not-allowed text-left"
+                  className="group relative p-4 sm:p-5 border-2 border-gray-200 rounded-lg hover:border-indigo-300 hover:bg-indigo-50 hover:shadow-md transition-all disabled:opacity-50 disabled:cursor-not-allowed text-left"
                 >
-                  <div className="flex items-start justify-between mb-3 sm:mb-4">
-                    <div className="w-10 h-10 sm:w-12 sm:h-12 bg-indigo-100 rounded-lg flex items-center justify-center group-hover:bg-indigo-200 transition-colors">
-                      <RefreshCw className={`w-5 h-5 sm:w-6 sm:h-6 text-indigo-600 ${syncing ? 'animate-spin' : ''}`} />
+                  <div className="flex items-start justify-between mb-3">
+                    <div className="w-10 h-10 bg-indigo-100 rounded-lg flex items-center justify-center group-hover:bg-indigo-200 transition-colors">
+                      <RefreshCw className={`w-5 h-5 text-indigo-600 ${syncing ? 'animate-spin' : ''}`} />
                     </div>
-                    <span className="text-xs font-medium px-2 py-1 bg-indigo-100 text-indigo-700 rounded-full">
-                      24 uur
+                    <span className="text-xs font-medium px-2 py-0.5 bg-indigo-100 text-indigo-700 rounded-full">
+                      24u
                     </span>
                   </div>
-                  <h3 className="text-base sm:text-lg font-semibold text-gray-900 mb-1">Quick Sync</h3>
-                  <p className="text-xs sm:text-sm text-gray-600">
-                    Importeer calls van de laatste 24 uur. Ideaal voor dagelijkse sync.
+                  <h3 className="text-sm sm:text-base font-semibold text-gray-900 mb-1">Quick Sync</h3>
+                  <p className="text-xs text-gray-600">
+                    Laatste 24 uur
+                  </p>
+                </button>
+
+                {/* Weekly Sync - 7 days */}
+                <button
+                  onClick={() => handleSync(168)}
+                  disabled={syncing}
+                  className="group relative p-4 sm:p-5 border-2 border-gray-200 rounded-lg hover:border-teal-300 hover:bg-teal-50 hover:shadow-md transition-all disabled:opacity-50 disabled:cursor-not-allowed text-left"
+                >
+                  <div className="flex items-start justify-between mb-3">
+                    <div className="w-10 h-10 bg-teal-100 rounded-lg flex items-center justify-center group-hover:bg-teal-200 transition-colors">
+                      <RefreshCw className={`w-5 h-5 text-teal-600 ${syncing ? 'animate-spin' : ''}`} />
+                    </div>
+                    <span className="text-xs font-medium px-2 py-0.5 bg-teal-100 text-teal-700 rounded-full">
+                      7d
+                    </span>
+                  </div>
+                  <h3 className="text-sm sm:text-base font-semibold text-gray-900 mb-1">Weekly Sync</h3>
+                  <p className="text-xs text-gray-600">
+                    Laatste 7 dagen
                   </p>
                 </button>
 
@@ -406,26 +714,26 @@ export default function SettingsPage() {
                 <button
                   onClick={() => handleSync(720)}
                   disabled={syncing}
-                  className="group relative p-5 sm:p-6 border-2 border-gray-200 rounded-lg hover:border-purple-300 hover:bg-purple-50 hover:shadow-md transition-all disabled:opacity-50 disabled:cursor-not-allowed text-left"
+                  className="group relative p-4 sm:p-5 border-2 border-gray-200 rounded-lg hover:border-purple-300 hover:bg-purple-50 hover:shadow-md transition-all disabled:opacity-50 disabled:cursor-not-allowed text-left"
                 >
-                  <div className="flex items-start justify-between mb-3 sm:mb-4">
-                    <div className="w-10 h-10 sm:w-12 sm:h-12 bg-purple-100 rounded-lg flex items-center justify-center group-hover:bg-purple-200 transition-colors">
-                      <RefreshCw className={`w-5 h-5 sm:w-6 sm:h-6 text-purple-600 ${syncing ? 'animate-spin' : ''}`} />
+                  <div className="flex items-start justify-between mb-3">
+                    <div className="w-10 h-10 bg-purple-100 rounded-lg flex items-center justify-center group-hover:bg-purple-200 transition-colors">
+                      <RefreshCw className={`w-5 h-5 text-purple-600 ${syncing ? 'animate-spin' : ''}`} />
                     </div>
-                    <span className="text-xs font-medium px-2 py-1 bg-purple-100 text-purple-700 rounded-full">
-                      30 dagen
+                    <span className="text-xs font-medium px-2 py-0.5 bg-purple-100 text-purple-700 rounded-full">
+                      30d
                     </span>
                   </div>
-                  <h3 className="text-base sm:text-lg font-semibold text-gray-900 mb-1">Full Resync</h3>
-                  <p className="text-xs sm:text-sm text-gray-600">
-                    Importeer calls van de laatste 30 dagen. Gebruik na team wijzigingen.
+                  <h3 className="text-sm sm:text-base font-semibold text-gray-900 mb-1">Full Resync</h3>
+                  <p className="text-xs text-gray-600">
+                    Laatste 30 dagen
                   </p>
                 </button>
               </div>
 
               {/* Sync Status */}
               {syncing && (
-                <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 flex items-center gap-3">
+                <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 flex items-center gap-3 mt-4">
                   <Loader2 className="w-5 h-5 text-blue-600 animate-spin flex-shrink-0" />
                   <div>
                     <p className="text-sm font-medium text-blue-900">Synchroniseren...</p>
@@ -436,7 +744,7 @@ export default function SettingsPage() {
 
               {/* Sync Result */}
               {syncResult && !syncing && (
-                <div className={`rounded-lg p-4 border ${
+                <div className={`rounded-lg p-4 border mt-4 ${
                   syncResult.success
                     ? 'bg-green-50 border-green-200'
                     : 'bg-red-50 border-red-200'
@@ -486,22 +794,10 @@ export default function SettingsPage() {
                   </div>
                 </div>
               )}
+                  </div>
+                )}
+              </div>
 
-                      {/* Info Box */}
-                      <div className="mt-5 sm:mt-6 bg-blue-50 border border-blue-200 rounded-lg p-4">
-                        <div className="flex items-start gap-3">
-                          <AlertCircle className="w-5 h-5 text-blue-600 flex-shrink-0 mt-0.5" />
-                          <div className="text-sm text-blue-900">
-                            <p className="font-medium mb-1">Over Fathom Sync</p>
-                            <ul className="text-xs text-blue-800 space-y-1 list-disc list-inside">
-                              <li>Alleen calls van actieve sales reps worden geïmporteerd</li>
-                              <li>Calls met 2+ deelnemers (of meerdere speakers in transcript)</li>
-                              <li>Team restrictions worden gerespecteerd</li>
-                              <li>Duplicate calls worden automatisch geskipped</li>
-                            </ul>
-                          </div>
-                        </div>
-                      </div>
                     </div>
                   </div>
                 )}
@@ -509,40 +805,40 @@ export default function SettingsPage() {
                 {/* User Management Content */}
                 {activeTab === 'users' && (
                   <div>
-                    <div className="border-b border-gray-200 bg-gradient-to-r from-green-50 to-teal-50 px-5 sm:px-6 py-4">
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-3">
-                          <div className="w-10 h-10 bg-green-600 rounded-lg flex items-center justify-center">
-                            <Users className="w-5 h-5 text-white" />
+                    <div className="border-b border-gray-200 bg-gradient-to-r from-green-50 to-teal-50 px-4 sm:px-5 lg:px-6 py-3 sm:py-4">
+                      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                        <div className="flex items-center gap-2 sm:gap-3 min-w-0">
+                          <div className="w-8 h-8 sm:w-10 sm:h-10 bg-green-600 rounded-lg flex items-center justify-center flex-shrink-0">
+                            <Users className="w-4 h-4 sm:w-5 sm:h-5 text-white" />
                           </div>
-                          <div>
-                            <h2 className="text-base sm:text-lg font-semibold text-gray-900">Gebruikersbeheer</h2>
-                            <p className="text-xs sm:text-sm text-gray-600">Beheer toegang tot je CRM ({users.length} gebruiker{users.length !== 1 ? 's' : ''})</p>
+                          <div className="min-w-0">
+                            <h2 className="text-sm sm:text-base lg:text-lg font-semibold text-gray-900">Gebruikersbeheer</h2>
+                            <p className="text-xs sm:text-sm text-gray-600 truncate">Beheer toegang tot je CRM ({users.length} gebruiker{users.length !== 1 ? 's' : ''})</p>
                           </div>
                         </div>
-                        <div className="flex items-center gap-2">
+                        <div className="flex items-center gap-2 flex-shrink-0">
                           <button
                             onClick={loadUsers}
                             disabled={loadingUsers}
-                            className="flex items-center gap-2 px-3 py-2 bg-gray-100 text-gray-700 text-sm font-medium rounded-lg hover:bg-gray-200 transition-colors disabled:opacity-50"
+                            className="flex items-center justify-center gap-1.5 px-2.5 sm:px-3 py-2 bg-gray-100 text-gray-700 text-xs sm:text-sm font-medium rounded-lg hover:bg-gray-200 transition-colors disabled:opacity-50 whitespace-nowrap"
                             title="Lijst verversen"
                           >
-                            <RefreshCw className={`w-4 h-4 ${loadingUsers ? 'animate-spin' : ''}`} />
-                            <span className="hidden sm:inline">Ververs</span>
+                            <RefreshCw className={`w-3.5 h-3.5 sm:w-4 sm:h-4 ${loadingUsers ? 'animate-spin' : ''}`} />
+                            <span className="hidden md:inline">Ververs</span>
                           </button>
                           <button
                             onClick={() => setShowAddUserModal(true)}
-                            className="flex items-center gap-2 px-3 sm:px-4 py-2 bg-green-600 text-white text-sm font-medium rounded-lg hover:bg-green-700 transition-colors"
+                            className="flex items-center justify-center gap-1.5 px-2.5 sm:px-3 lg:px-4 py-2 bg-green-600 text-white text-xs sm:text-sm font-medium rounded-lg hover:bg-green-700 transition-colors whitespace-nowrap"
                           >
-                            <UserPlus className="w-4 h-4" />
-                            <span className="hidden sm:inline">Gebruiker Toevoegen</span>
-                            <span className="sm:hidden">+</span>
+                            <UserPlus className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+                            <span className="hidden md:inline">Gebruiker Toevoegen</span>
+                            <span className="md:hidden">+</span>
                           </button>
                         </div>
                       </div>
                     </div>
 
-                    <div className="p-5 sm:p-6">
+                    <div className="p-4 sm:p-5 lg:p-6">
               {/* Users List */}
               {loadingUsers ? (
                 <div className="text-center py-12">
@@ -565,123 +861,243 @@ export default function SettingsPage() {
                   {users.map((u) => (
                     <div
                       key={u.id}
-                      className={`group relative flex items-center justify-between p-5 bg-white border-2 border-gray-200 rounded-xl hover:shadow-lg transition-all duration-200 ${
-                        u.status === 'invited' ? 'hover:border-amber-300' : 'hover:border-green-300'
+                      className={`group relative flex flex-col sm:flex-row sm:items-center sm:justify-between p-4 sm:p-5 bg-white border-2 border-gray-200 rounded-xl hover:shadow-md transition-all duration-200 ${
+                        u.status === 'invited' ? 'hover:border-amber-200' : 'hover:border-green-200'
                       }`}
                     >
-                      {/* Left side - User Info */}
-                      <div className="flex items-center gap-4 flex-1 min-w-0">
+                      {/* Top section - User Info */}
+                      <div className="flex items-center gap-3 sm:gap-4 flex-1 min-w-0 mb-3 sm:mb-0">
                         {/* Avatar with status ring */}
-                        <div className="relative">
-                          <div className={`w-12 h-12 rounded-full flex items-center justify-center flex-shrink-0 shadow-md group-hover:shadow-lg group-hover:scale-105 transition-all duration-200 ${
+                        <div className="relative flex-shrink-0">
+                          <div className={`w-11 h-11 sm:w-12 sm:h-12 rounded-full flex items-center justify-center shadow-md transition-shadow duration-200 ${
                             u.status === 'invited'
                               ? 'bg-gradient-to-br from-amber-400 to-orange-600'
                               : 'bg-gradient-to-br from-green-400 to-teal-600'
                           }`}>
-                            <span className="text-white font-bold text-base">
+                            <span className="text-white font-bold text-sm sm:text-base">
                               {u.first_name?.charAt(0) || u.email.charAt(0).toUpperCase()}
                             </span>
                           </div>
                           {/* Status indicator */}
                           {u.status === 'active' ? (
-                            <div className="absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 bg-green-500 border-2 border-white rounded-full"></div>
+                            <div className="absolute -bottom-0.5 -right-0.5 w-3 h-3 sm:w-3.5 sm:h-3.5 bg-green-500 border-2 border-white rounded-full"></div>
                           ) : (
-                            <div className="absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 bg-amber-500 border-2 border-white rounded-full"></div>
+                            <div className="absolute -bottom-0.5 -right-0.5 w-3 h-3 sm:w-3.5 sm:h-3.5 bg-amber-500 border-2 border-white rounded-full"></div>
                           )}
                         </div>
 
                         {/* User Details */}
                         <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-2 mb-1">
-                            <p className={`text-base font-semibold text-gray-900 truncate transition-colors ${
-                              u.status === 'invited' ? 'group-hover:text-amber-700' : 'group-hover:text-green-700'
-                            }`}>
+                          <div className="flex flex-wrap items-center gap-1.5 sm:gap-2 mb-1">
+                            <p className="text-sm sm:text-base font-semibold text-gray-900 truncate">
                               {u.first_name && u.last_name
                                 ? `${u.first_name} ${u.last_name}`
                                 : u.email}
                             </p>
                             {u.role === 'admin' && (
-                              <span className="flex items-center gap-1 text-xs font-semibold px-2.5 py-1 bg-gradient-to-r from-indigo-100 to-purple-100 text-indigo-700 rounded-full border border-indigo-200">
-                                <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                              <span className="flex items-center gap-1 text-xs font-semibold px-2 sm:px-2.5 py-0.5 sm:py-1 bg-gradient-to-r from-indigo-100 to-purple-100 text-indigo-700 rounded-full border border-indigo-200 flex-shrink-0">
+                                <svg className="w-2.5 h-2.5 sm:w-3 sm:h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2.286 6.857L21 12l-5.714 2.143L13 21l-2.286-6.857L5 12l5.714-2.143L13 3z" />
                                 </svg>
-                                Admin
+                                <span className="hidden xs:inline">Admin</span>
                               </span>
                             )}
                             {u.status === 'invited' && (
-                              <span className="flex items-center gap-1 text-xs font-semibold px-2.5 py-1 bg-gradient-to-r from-amber-100 to-orange-100 text-amber-700 rounded-full border border-amber-200">
-                                <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                              <span className="flex items-center gap-1 text-xs font-semibold px-2 sm:px-2.5 py-0.5 sm:py-1 bg-gradient-to-r from-amber-100 to-orange-100 text-amber-700 rounded-full border border-amber-200 flex-shrink-0">
+                                <svg className="w-2.5 h-2.5 sm:w-3 sm:h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
                                 </svg>
-                                Uitnodiging verzonden
+                                <span className="hidden xs:inline">Uitnodiging</span>
                               </span>
                             )}
                           </div>
-                          <div className="flex items-center gap-2 mt-1.5">
-                            <Mail className="w-4 h-4 text-gray-400 flex-shrink-0" />
-                            <p className="text-sm font-normal text-gray-600">{u.email}</p>
+                          <div className="flex items-center gap-1.5 sm:gap-2 mt-1 sm:mt-1.5">
+                            <Mail className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-gray-400 flex-shrink-0" />
+                            <p className="text-xs sm:text-sm font-normal text-gray-600 truncate">{u.email}</p>
                           </div>
                         </div>
                       </div>
 
-                      {/* Right side - Actions */}
-                      <div className="flex items-center gap-2">
+                      {/* Bottom section - Actions */}
+                      <div className="flex flex-col xs:flex-row items-stretch xs:items-center gap-2 w-full sm:w-auto">
                         {u.id === user?.id ? (
-                          <div className="flex items-center gap-2">
-                            <span className="text-xs font-medium text-green-700 px-2.5 py-1.5 bg-green-100 rounded-lg border border-green-200">
+                          <>
+                            <span className="text-xs font-medium text-green-700 px-2.5 py-1.5 bg-green-100 rounded-lg border border-green-200 text-center xs:text-left whitespace-nowrap">
                               Dit ben jij
                             </span>
                             <button
                               onClick={() => router.push('/dashboard/profile')}
-                              className="flex items-center gap-1.5 px-3 py-2 bg-gradient-to-r from-green-600 to-teal-600 text-white text-xs font-medium rounded-lg hover:from-green-700 hover:to-teal-700 transition-all shadow-sm hover:shadow-md"
+                              className="flex items-center justify-center gap-1.5 px-3 py-2 bg-gradient-to-r from-green-600 to-teal-600 text-white text-xs font-medium rounded-lg hover:from-green-700 hover:to-teal-700 transition-all shadow-sm hover:shadow-md whitespace-nowrap"
                             >
                               <User className="w-3.5 h-3.5" />
                               <span>Ga naar profiel</span>
                             </button>
-                          </div>
+                          </>
                         ) : (
-                          <div className="flex items-center gap-2">
+                          <div className="flex flex-col xs:flex-row items-stretch xs:items-center gap-2">
                             {u.status === 'invited' && (
                               <button
-                                className="px-3 py-2 text-amber-600 hover:text-amber-700 hover:bg-amber-50 rounded-lg transition-all duration-200 text-xs font-medium border border-amber-200 hover:border-amber-300"
+                                className="px-3 py-2 text-amber-600 hover:text-amber-700 hover:bg-amber-50 rounded-lg transition-all duration-200 text-xs font-medium border border-amber-200 hover:border-amber-300 disabled:opacity-50 disabled:cursor-not-allowed text-center xs:text-left whitespace-nowrap"
                                 title="Uitnodiging opnieuw versturen"
-                                onClick={() => alert('Uitnodiging opnieuw versturen functionaliteit komt binnenkort!')}
+                                onClick={() => handleResendInvitation(u)}
+                                disabled={resending === u.id}
                               >
-                                Opnieuw versturen
+                                {resending === u.id ? 'Versturen...' : 'Opnieuw versturen'}
                               </button>
                             )}
                             <button
-                              className="p-2.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-all duration-200 group/btn"
+                              className="flex items-center justify-center gap-1.5 p-2.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-all duration-200 group/btn xs:w-auto"
                               title="Verwijder gebruiker"
+                              onClick={() => openDeleteModal(u)}
                             >
                               <Trash2 className="w-4 h-4 group-hover/btn:scale-110 transition-transform" />
+                              <span className="xs:hidden text-xs font-medium text-red-600 group-hover/btn:text-red-700">Verwijderen</span>
                             </button>
                           </div>
                         )}
                       </div>
 
-                      {/* Hover gradient overlay */}
+                      {/* Subtle hover overlay */}
                       <div className={`absolute inset-0 rounded-xl pointer-events-none transition-all duration-200 ${
                         u.status === 'invited'
-                          ? 'bg-gradient-to-r from-amber-50/0 to-orange-50/0 group-hover:from-amber-50/50 group-hover:to-orange-50/50'
-                          : 'bg-gradient-to-r from-green-50/0 to-teal-50/0 group-hover:from-green-50/50 group-hover:to-teal-50/50'
+                          ? 'bg-gradient-to-r from-amber-50/0 to-orange-50/0 group-hover:from-amber-50/20 group-hover:to-orange-50/20'
+                          : 'bg-gradient-to-r from-green-50/0 to-teal-50/0 group-hover:from-green-50/20 group-hover:to-teal-50/20'
                       }`}></div>
                     </div>
                   ))}
                 </div>
               )}
+                    </div>
+                  </div>
+                )}
 
-                      {/* Info Box */}
-                      <div className="mt-5 sm:mt-6 bg-green-50 border border-green-200 rounded-lg p-4">
-                        <div className="flex items-start gap-3">
-                          <AlertCircle className="w-5 h-5 text-green-600 flex-shrink-0 mt-0.5" />
-                          <div className="text-sm text-green-900">
-                            <p className="font-medium mb-1">Over Gebruikersbeheer</p>
-                            <ul className="text-xs text-green-800 space-y-1 list-disc list-inside">
-                              <li>Nieuwe gebruikers ontvangen een uitnodigingsmail met reset password link</li>
-                              <li>Gebruikers moeten hun eigen wachtwoord instellen bij eerste login</li>
-                              <li>Je wachtwoord is vereist om nieuwe gebruikers toe te voegen (beveiliging)</li>
+                {/* FAQ Content */}
+                {activeTab === 'faq' && (
+                  <div>
+                    <div className="border-b border-gray-200 bg-gradient-to-r from-blue-50 to-cyan-50 px-4 sm:px-5 lg:px-6 py-3 sm:py-4">
+                      <div className="flex items-center gap-2 sm:gap-3">
+                        <div className="w-8 h-8 sm:w-10 sm:h-10 bg-blue-600 rounded-lg flex items-center justify-center flex-shrink-0">
+                          <HelpCircle className="w-4 h-4 sm:w-5 sm:h-5 text-white" />
+                        </div>
+                        <div className="min-w-0">
+                          <h2 className="text-sm sm:text-base lg:text-lg font-semibold text-gray-900">FAQ</h2>
+                          <p className="text-xs sm:text-sm text-gray-600 truncate">Veelgestelde vragen over de CRM</p>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="p-4 sm:p-5 lg:p-6">
+                      <div className="space-y-3 sm:space-y-4">
+                        {/* FAQ Item 1 */}
+                        <div className="bg-white border border-gray-200 rounded-lg p-3 sm:p-4">
+                          <h3 className="text-sm sm:text-base font-semibold text-gray-900 mb-2 flex items-center gap-2">
+                            <span className="text-blue-600 flex-shrink-0">Q:</span>
+                            Hoe werkt Fathom Sync?
+                          </h3>
+                          <div className="text-sm text-gray-700 pl-6 space-y-2">
+                            <p><strong>Individueel syncen:</strong> Ga naar een sales rep profiel en klik op de "Ververs" knop. Deze gebruikt je opgeslagen default periode (24u, 7d of 30d).</p>
+                            <p><strong>Bulk syncen (noodoptie):</strong> Ga naar Settings → Fathom Sync → klik op "Fathom Sync Reset" en kies 24u, 7d of 30d. Dit importeert calls voor alle actieve sales reps tegelijk.</p>
+                          </div>
+                        </div>
+
+                        {/* FAQ Item 2 */}
+                        <div className="bg-white border border-gray-200 rounded-lg p-3 sm:p-4">
+                          <h3 className="text-sm sm:text-base font-semibold text-gray-900 mb-2 flex items-center gap-2">
+                            <span className="text-blue-600 flex-shrink-0">Q:</span>
+                            Welke calls worden geïmporteerd?
+                          </h3>
+                          <div className="text-xs sm:text-sm text-gray-700 pl-4 sm:pl-6">
+                            <ul className="list-disc list-inside space-y-1">
+                              <li>Alleen calls van <strong>actieve sales reps</strong> (niet gearchiveerd)</li>
+                              <li>Alleen calls uit het juiste <strong>Fathom team</strong> (indien geconfigureerd)</li>
+                              <li><strong>Alle soorten calls</strong> - inclusief solo calls en 1-on-1 gesprekken</li>
+                              <li>Duplicate calls worden automatisch geskipped</li>
                             </ul>
+                          </div>
+                        </div>
+
+                        {/* FAQ Item 3 */}
+                        <div className="bg-white border border-gray-200 rounded-lg p-4">
+                          <h3 className="font-semibold text-gray-900 mb-2 flex items-center gap-2">
+                            <span className="text-blue-600">Q:</span>
+                            Hoe stel ik mijn default sync periode in?
+                          </h3>
+                          <div className="text-sm text-gray-700 pl-6">
+                            <p>Ga naar Settings → Fathom Sync → kies "24 Uur", "7 Dagen" of "30 Dagen" in het bovenste blok → klik op "Voorkeur Opslaan". Deze instelling wordt automatisch gebruikt door alle "Ververs" knoppen.</p>
+                          </div>
+                        </div>
+
+                        {/* FAQ Item 4 */}
+                        <div className="bg-white border border-gray-200 rounded-lg p-4">
+                          <h3 className="font-semibold text-gray-900 mb-2 flex items-center gap-2">
+                            <span className="text-blue-600">Q:</span>
+                            Wat is het verschil tussen de sync periodes?
+                          </h3>
+                          <div className="text-sm text-gray-700 pl-6">
+                            <ul className="list-disc list-inside space-y-1">
+                              <li><strong>24 uur:</strong> Snelle dagelijkse sync voor recente calls</li>
+                              <li><strong>7 dagen:</strong> Wekelijkse sync voor calls van de afgelopen week</li>
+                              <li><strong>30 dagen:</strong> Uitgebreide sync voor historische data of na team wijzigingen</li>
+                            </ul>
+                          </div>
+                        </div>
+
+                        {/* FAQ Item 5 */}
+                        <div className="bg-white border border-gray-200 rounded-lg p-4">
+                          <h3 className="font-semibold text-gray-900 mb-2 flex items-center gap-2">
+                            <span className="text-blue-600">Q:</span>
+                            Hoe voeg ik een nieuwe gebruiker toe?
+                          </h3>
+                          <div className="text-sm text-gray-700 pl-6">
+                            <p>Ga naar Settings → Gebruikersbeheer → klik "Gebruiker Toevoegen". Vul de gegevens in en je eigen wachtwoord voor beveiliging. De nieuwe gebruiker ontvangt een uitnodigingsmail met een password reset link.</p>
+                          </div>
+                        </div>
+
+                        {/* FAQ Item 6 */}
+                        <div className="bg-white border border-gray-200 rounded-lg p-4">
+                          <h3 className="font-semibold text-gray-900 mb-2 flex items-center gap-2">
+                            <span className="text-blue-600">Q:</span>
+                            Kan ik gebruikers verwijderen?
+                          </h3>
+                          <div className="text-sm text-gray-700 pl-6">
+                            <p>Ja! Ga naar Settings → Gebruikersbeheer → klik op het prullenbak icoon naast de gebruiker → bevestig de actie. Let op: je kunt jezelf niet verwijderen.</p>
+                          </div>
+                        </div>
+
+                        {/* FAQ Item 7 */}
+                        <div className="bg-white border border-gray-200 rounded-lg p-4">
+                          <h3 className="font-semibold text-gray-900 mb-2 flex items-center gap-2">
+                            <span className="text-blue-600">Q:</span>
+                            Hoe configureer ik Fathom teams voor een sales rep?
+                          </h3>
+                          <div className="text-sm text-gray-700 pl-6">
+                            <p>Ga naar het sales rep profiel → scroll naar "Fathom Team Configuratie" → voeg team namen toe (bijv. "Sales", "Support") → klik "Opslaan". Alleen calls uit deze teams worden geïmporteerd.</p>
+                          </div>
+                        </div>
+
+                        {/* Help Section */}
+                        <div className="mt-4 sm:mt-6 bg-gradient-to-r from-blue-50 to-cyan-50 border-2 border-blue-200 rounded-lg p-4 sm:p-5">
+                          <div className="flex items-start gap-2 sm:gap-3">
+                            <HelpCircle className="w-5 h-5 sm:w-6 sm:h-6 text-blue-600 flex-shrink-0 mt-0.5" />
+                            <div className="flex-1 min-w-0">
+                              <h3 className="text-sm sm:text-base font-semibold text-gray-900 mb-2">Meer hulp nodig?</h3>
+                              <p className="text-xs sm:text-sm text-gray-700 mb-3">
+                                Staat je vraag er niet tussen? Neem contact op met de support voor hulp.
+                              </p>
+                              <div className="flex flex-col sm:flex-row gap-2">
+                                <button className="px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 transition-colors">
+                                  Contact Support
+                                </button>
+                                <a
+                                  href="https://fathom.video/help"
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="px-4 py-2 bg-white border border-blue-300 text-blue-700 text-sm font-medium rounded-lg hover:bg-blue-50 transition-colors text-center"
+                                >
+                                  Fathom Help Center
+                                </a>
+                              </div>
+                            </div>
                           </div>
                         </div>
                       </div>
@@ -842,6 +1258,136 @@ export default function SettingsPage() {
           </div>
         </div>
       )}
+
+      {/* Delete User Confirmation Modal */}
+      {showDeleteModal && userToDelete && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-lg shadow-xl w-full max-w-md">
+            <div className="p-6 border-b border-gray-200">
+              <div className="flex items-center justify-between">
+                <h2 className="text-xl font-semibold text-gray-900">Gebruiker Verwijderen</h2>
+                <button
+                  onClick={closeDeleteModal}
+                  className="text-gray-400 hover:text-gray-600 transition-colors"
+                  disabled={deleting}
+                >
+                  <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
+            </div>
+
+            <div className="p-6">
+              {/* Warning Message */}
+              <div className="bg-red-50 border border-red-200 rounded-lg p-4 mb-4">
+                <div className="flex items-start gap-3">
+                  <svg className="w-6 h-6 text-red-600 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                  </svg>
+                  <div>
+                    <p className="text-sm font-semibold text-red-900 mb-1">Let Op!</p>
+                    <p className="text-sm text-red-800">
+                      Deze actie kan niet ongedaan worden gemaakt. De gebruiker wordt permanent verwijderd.
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              {/* User Info */}
+              <div className="mb-6">
+                <p className="text-sm text-gray-600 mb-2">
+                  Weet je zeker dat je de volgende gebruiker wilt verwijderen?
+                </p>
+                <div className="bg-gray-50 rounded-lg p-4 border border-gray-200">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-full bg-gradient-to-br from-red-400 to-red-600 flex items-center justify-center">
+                      <span className="text-white font-bold text-sm">
+                        {userToDelete.first_name?.charAt(0) || userToDelete.email.charAt(0).toUpperCase()}
+                      </span>
+                    </div>
+                    <div>
+                      <p className="text-sm font-semibold text-gray-900">
+                        {userToDelete.first_name && userToDelete.last_name
+                          ? `${userToDelete.first_name} ${userToDelete.last_name}`
+                          : userToDelete.email}
+                      </p>
+                      <p className="text-xs text-gray-600">{userToDelete.email}</p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Action Buttons */}
+              <div className="flex gap-3">
+                <button
+                  type="button"
+                  onClick={closeDeleteModal}
+                  className="flex-1 px-4 py-2.5 border border-gray-300 text-gray-700 text-sm font-medium rounded-lg hover:bg-gray-50 transition-colors"
+                  disabled={deleting}
+                >
+                  Annuleren
+                </button>
+                <button
+                  type="button"
+                  onClick={handleDeleteUser}
+                  disabled={deleting}
+                  className="flex-1 px-4 py-2.5 bg-red-600 text-white text-sm font-medium rounded-lg hover:bg-red-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                >
+                  {deleting ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                      <span>Verwijderen...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Trash2 className="w-4 h-4" />
+                      <span>Ja, Verwijderen</span>
+                    </>
+                  )}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Toast Notifications */}
+      <div className="fixed bottom-4 right-4 z-50 space-y-2">
+        {toasts.map((toast) => (
+          <div
+            key={toast.id}
+            className={`flex items-start gap-3 p-4 rounded-lg shadow-lg border-2 min-w-[300px] max-w-md animate-slide-in ${
+              toast.type === 'success'
+                ? 'bg-green-50 border-green-200 text-green-900'
+                : toast.type === 'error'
+                ? 'bg-red-50 border-red-200 text-red-900'
+                : 'bg-blue-50 border-blue-200 text-blue-900'
+            }`}
+          >
+            {toast.type === 'success' && (
+              <CheckCircle className="w-5 h-5 text-green-600 flex-shrink-0" />
+            )}
+            {toast.type === 'error' && (
+              <XCircle className="w-5 h-5 text-red-600 flex-shrink-0" />
+            )}
+            {toast.type === 'info' && (
+              <AlertCircle className="w-5 h-5 text-blue-600 flex-shrink-0" />
+            )}
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-medium">{toast.message}</p>
+            </div>
+            <button
+              onClick={() => setToasts(prev => prev.filter(t => t.id !== toast.id))}
+              className="text-gray-400 hover:text-gray-600 transition-colors flex-shrink-0"
+            >
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+          </div>
+        ))}
+      </div>
     </DashboardLayout>
   )
 }

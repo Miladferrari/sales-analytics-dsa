@@ -1,12 +1,11 @@
 /**
- * OpenAI Service voor Sales Call Analysis
+ * OpenAI Service voor Dropship Academy Sales Call Analysis
  *
- * Deze service gebruikt OpenAI GPT-4 om call transcripts te analyseren
- * op basis van ons sales framework.
+ * Analyseert calls met de complete DSA 7-Step Process + Closer Infections
  */
 
 import OpenAI from 'openai'
-import { generateSystemPrompt, parseAnalysisResult, AnalysisResult } from './sales-framework'
+import { generateSystemPrompt, parseAnalysisResult, DSAAnalysisResult } from './sales-framework'
 
 // Initialize OpenAI client
 const openai = new OpenAI({
@@ -21,7 +20,7 @@ export interface CallAnalysisInput {
   callDuration?: number
 }
 
-export interface CallAnalysisOutput extends AnalysisResult {
+export interface CallAnalysisOutput extends DSAAnalysisResult {
   callId: string
   analyzedAt: string
   tokensUsed?: number
@@ -29,12 +28,13 @@ export interface CallAnalysisOutput extends AnalysisResult {
 }
 
 /**
- * Analyseer een sales call transcript met OpenAI
+ * Analyseer een sales call transcript met OpenAI GPT-4
+ * Gebruikt de complete Dropship Academy methodologie
  */
 export async function analyzeCall(input: CallAnalysisInput): Promise<CallAnalysisOutput> {
   const startTime = Date.now()
 
-  console.log(`🤖 Starting OpenAI analysis for call ${input.callId}`)
+  console.log(`🤖 Starting DSA analysis for call ${input.callId}`)
 
   // Valideer input
   if (!input.transcript || input.transcript.trim().length < 50) {
@@ -49,13 +49,15 @@ export async function analyzeCall(input: CallAnalysisInput): Promise<CallAnalysi
     // Bouw de user message met context
     const userMessage = buildUserMessage(input)
 
-    // Call OpenAI API
+    console.log('📝 Analyzing with DSA 7-Step Framework...')
+
+    // Call OpenAI API met GPT-4o
     const completion = await openai.chat.completions.create({
-      model: 'gpt-4o', // GPT-4o - Latest and most capable model for sales analysis
+      model: 'gpt-4o', // Best model for complex analysis
       messages: [
         {
           role: 'system',
-          content: generateSystemPrompt()
+          content: generateSystemPrompt() // DSA Framework prompt!
         },
         {
           role: 'user',
@@ -63,7 +65,7 @@ export async function analyzeCall(input: CallAnalysisInput): Promise<CallAnalysi
         }
       ],
       temperature: 0.3, // Lagere temp voor consistentere analyse
-      max_tokens: 2000,
+      max_tokens: 3000, // Meer tokens voor uitgebreide DSA analyse
       response_format: { type: 'json_object' } // Force JSON output
     })
 
@@ -73,12 +75,13 @@ export async function analyzeCall(input: CallAnalysisInput): Promise<CallAnalysi
       throw new Error('No response from OpenAI')
     }
 
-    // Parse en valideer response
+    // Parse en valideer DSA response
     const analysisResult = parseAnalysisResult(responseContent)
 
     const duration = Date.now() - startTime
-    console.log(`✅ Analysis completed in ${duration}ms for call ${input.callId}`)
+    console.log(`✅ DSA Analysis completed in ${duration}ms`)
     console.log(`📊 Overall score: ${analysisResult.overall_score}/100`)
+    console.log(`🔍 Closer infections detected: ${analysisResult.closer_infections_detected?.length || 0}`)
 
     return {
       ...analysisResult,
@@ -88,7 +91,7 @@ export async function analyzeCall(input: CallAnalysisInput): Promise<CallAnalysi
       model: completion.model
     }
   } catch (error) {
-    console.error(`❌ OpenAI analysis failed for call ${input.callId}:`, error)
+    console.error(`❌ DSA analysis failed for call ${input.callId}:`, error)
 
     // Geef duidelijke error messages
     if (error instanceof Error) {
@@ -101,9 +104,12 @@ export async function analyzeCall(input: CallAnalysisInput): Promise<CallAnalysi
       if (error.message.includes('timeout')) {
         throw new Error('OpenAI request timed out. The transcript might be too long.')
       }
+      if (error.message.includes('parse')) {
+        throw new Error('Failed to parse OpenAI response. The model may not have followed the DSA format.')
+      }
     }
 
-    throw new Error(`Failed to analyze call: ${error}`)
+    throw new Error(`Failed to analyze call with DSA framework: ${error}`)
   }
 }
 
@@ -111,7 +117,7 @@ export async function analyzeCall(input: CallAnalysisInput): Promise<CallAnalysi
  * Bouw de user message met extra context
  */
 function buildUserMessage(input: CallAnalysisInput): string {
-  let message = '# SALES CALL TRANSCRIPT\n\n'
+  let message = '# DROPSHIP ACADEMY SALES CALL TRANSCRIPT\n\n'
 
   // Voeg metadata toe als beschikbaar
   if (input.salesRepName) {
@@ -125,9 +131,12 @@ function buildUserMessage(input: CallAnalysisInput): string {
   }
 
   message += '\n---\n\n'
+  message += '**TRANSCRIPT:**\n\n'
   message += input.transcript
   message += '\n\n---\n\n'
-  message += 'Please analyze this sales call based on the framework and provide your detailed assessment in JSON format.'
+  message += 'Analyseer dit gesprek met de Dropship Academy 7-Step Process. '
+  message += 'Detecteer Closer Infections, score elk step, en geef coaching feedback zoals Matthijs dat zou doen. '
+  message += 'Gebruik ALLEEN DSA terminologie - geen generieke sales advice.'
 
   return message
 }
@@ -151,22 +160,24 @@ export async function testOpenAIConnection(): Promise<boolean> {
 }
 
 /**
- * Schat de kosten van een analyse
+ * Schat de kosten van een DSA analyse
  */
 export function estimateAnalysisCost(transcriptLength: number): {
   estimatedTokens: number
   estimatedCostUSD: number
 } {
+  // DSA prompt is langer (~3000 tokens) vanwege uitgebreide framework
+  const systemPromptTokens = 3000
   // Ruwe schatting: ~1 token per 4 characters
-  const inputTokens = Math.ceil(transcriptLength / 4) + 500 // +500 voor system prompt
-  const outputTokens = 1500 // Gemiddelde output size
+  const inputTokens = Math.ceil(transcriptLength / 4) + systemPromptTokens
+  const outputTokens = 2500 // DSA output is uitgebreider (7 steps + infections + mindset)
 
   const totalTokens = inputTokens + outputTokens
 
-  // GPT-4-turbo pricing (approximatie)
-  // Input: $0.01 per 1K tokens
-  // Output: $0.03 per 1K tokens
-  const cost = (inputTokens / 1000) * 0.01 + (outputTokens / 1000) * 0.03
+  // GPT-4o pricing (March 2024)
+  // Input: $0.005 per 1K tokens
+  // Output: $0.015 per 1K tokens
+  const cost = (inputTokens / 1000) * 0.005 + (outputTokens / 1000) * 0.015
 
   return {
     estimatedTokens: totalTokens,

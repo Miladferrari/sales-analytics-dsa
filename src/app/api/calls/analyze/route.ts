@@ -88,19 +88,25 @@ export async function POST(request: NextRequest) {
       callDuration: call.duration
     })
 
-    // 6. Save analysis to database
+    // 6. Save DSA analysis to database
     const { data: savedAnalysis, error: saveError } = await supabase
       .from('analysis')
       .insert({
         call_id: callId,
         framework_score: analysisResult.overall_score,
         sentiment_score: calculateSentimentScore(analysisResult),
-        key_topics: extractKeyTopics(analysisResult),
+        key_topics: extractDSAKeyTopics(analysisResult),
         analysis_data: {
-          categories: analysisResult.categories,
-          strengths: analysisResult.strengths,
+          // DSA Complete Analysis Data
+          overall_score: analysisResult.overall_score,
+          framework_level_scores: analysisResult.framework_level_scores,
+          step_scores: analysisResult.step_scores,
+          closer_infections_detected: analysisResult.closer_infections_detected,
+          mindset_check: analysisResult.mindset_check,
+          wins: analysisResult.wins,
           improvements: analysisResult.improvements,
-          summary: analysisResult.summary,
+          coaching_feedback: analysisResult.coaching_feedback,
+          sales_spiegel_reflection: analysisResult.sales_spiegel_reflection,
           model: analysisResult.model,
           tokensUsed: analysisResult.tokensUsed
         },
@@ -224,29 +230,38 @@ export async function GET() {
 }
 
 /**
- * Helper: Calculate sentiment score from analysis
+ * Helper: Calculate sentiment score from DSA analysis
  */
 function calculateSentimentScore(analysis: any): number {
-  // Simpele berekening: score >= 70 = positive, 50-70 = neutral, <50 = negative
+  // Based on overall_score from DSA framework
   if (analysis.overall_score >= 70) return 80
   if (analysis.overall_score >= 50) return 60
   return 40
 }
 
 /**
- * Helper: Extract key topics from analysis
+ * Helper: Extract key topics from DSA analysis
  */
-function extractKeyTopics(analysis: any): string[] {
+function extractDSAKeyTopics(analysis: any): string[] {
   const topics: string[] = []
 
-  // Extract from category names where score is high or low
-  analysis.categories.forEach((cat: any) => {
-    if (cat.score >= 80) {
-      topics.push(`✓ ${cat.name}`)
-    } else if (cat.score < 50) {
-      topics.push(`⚠ ${cat.name}`)
-    }
-  })
+  // Extract from 7-step scores - focus on strongest and weakest
+  if (analysis.step_scores && Array.isArray(analysis.step_scores)) {
+    analysis.step_scores.forEach((step: any) => {
+      if (step.score >= 80) {
+        topics.push(`✓ ${step.step_name}`)
+      } else if (step.score < 50) {
+        topics.push(`⚠ ${step.step_name}`)
+      }
+    })
+  }
 
-  return topics.slice(0, 5) // Max 5 topics
+  // Add detected Closer Infections
+  if (analysis.closer_infections_detected && analysis.closer_infections_detected.length > 0) {
+    analysis.closer_infections_detected.forEach((infection: any) => {
+      topics.push(`🚩 ${infection.infection}`)
+    })
+  }
+
+  return topics.slice(0, 6) // Max 6 topics
 }
