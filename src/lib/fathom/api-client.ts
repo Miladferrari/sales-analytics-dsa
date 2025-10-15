@@ -158,6 +158,45 @@ export class FathomAPIClient {
   }
 
   /**
+   * Get transcript for a specific recording
+   * Returns formatted transcript text with speaker labels
+   */
+  async getTranscript(recordingId: string): Promise<string | null> {
+    try {
+      const response = await fetch(`${this.baseURL}/recordings/${recordingId}/transcript`, {
+        method: 'GET',
+        headers: {
+          'X-Api-Key': this.apiKey,
+          'Content-Type': 'application/json',
+        },
+      })
+
+      if (!response.ok) {
+        // Recording might not have a transcript yet (still processing or failed)
+        return null
+      }
+
+      const data = await response.json()
+
+      if (!data.transcript || !Array.isArray(data.transcript)) {
+        return null
+      }
+
+      // Format transcript: "Speaker Name: Text\n"
+      const formattedLines = data.transcript.map((entry: any) => {
+        const speaker = entry.speaker?.display_name || 'Unknown Speaker'
+        const text = entry.text || ''
+        return `${speaker}: ${text}`
+      })
+
+      return formattedLines.join('\n')
+    } catch (error) {
+      console.error(`Failed to fetch transcript for recording ${recordingId}:`, error)
+      return null
+    }
+  }
+
+  /**
    * Get calls created after a specific timestamp
    * This is useful for polling - only fetch new calls
    */
@@ -169,17 +208,28 @@ export class FathomAPIClient {
     while (hasMore && allCalls.length < limit) {
       const response = await this.getCalls(50, cursor)
 
-      // Filter calls that are newer than sinceTimestamp and normalize them
-      const newCalls = (response.items || [])
-        .filter(call => {
-          return new Date(call.created_at) > new Date(sinceTimestamp)
-        })
-        .map(call => normalizeCall(call))
+      // Filter calls that are newer than sinceTimestamp
+      const newCallsRaw = (response.items || []).filter(call => {
+        return new Date(call.created_at) > new Date(sinceTimestamp)
+      })
 
-      allCalls.push(...newCalls)
+      // Normalize calls and fetch transcripts
+      for (const apiCall of newCallsRaw) {
+        const normalized = normalizeCall(apiCall)
+
+        // Fetch transcript separately if not already included
+        if (!normalized.transcript && apiCall.recording_id) {
+          const transcript = await this.getTranscript(apiCall.recording_id.toString())
+          if (transcript) {
+            normalized.transcript = transcript
+          }
+        }
+
+        allCalls.push(normalized)
+      }
 
       // Stop if we've hit older calls or no more pages
-      if (newCalls.length < (response.items || []).length || !response.next_cursor) {
+      if (newCallsRaw.length < (response.items || []).length || !response.next_cursor) {
         hasMore = false
       } else {
         cursor = response.next_cursor

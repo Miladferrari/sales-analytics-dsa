@@ -7,6 +7,7 @@ import { SalesRep, Call, Analysis } from '@/types'
 import { format } from 'date-fns'
 import Link from 'next/link'
 import DashboardLayout from '@/components/DashboardLayout'
+import { toast } from 'sonner'
 import {
   ArrowLeft,
   User,
@@ -19,6 +20,7 @@ import {
   AlertCircle,
   Activity,
   BarChart3,
+  Sparkles,
 } from 'lucide-react'
 
 export default function RepProfilePage() {
@@ -27,6 +29,7 @@ export default function RepProfilePage() {
   const [rep, setRep] = useState<SalesRep | null>(null)
   const [calls, setCalls] = useState<Array<Call & { analysis: Analysis }>>([])
   const [loading, setLoading] = useState(true)
+  const [analyzingCallId, setAnalyzingCallId] = useState<string | null>(null)
   const [stats, setStats] = useState({
     totalCalls: 0,
     averageScore: 0,
@@ -106,6 +109,44 @@ export default function RepProfilePage() {
       console.error('Error loading rep data:', error)
     } finally {
       setLoading(false)
+    }
+  }
+
+  async function analyzeCall(callId: string) {
+    setAnalyzingCallId(callId)
+
+    try {
+      toast.info('DSA analyse gestart...', {
+        description: 'Dit kan 5-10 seconden duren'
+      })
+
+      const response = await fetch('/api/calls/analyze', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ callId })
+      })
+
+      const data = await response.json()
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Analyse mislukt')
+      }
+
+      toast.success('DSA analyse compleet!', {
+        description: `Score: ${data.score}/100`
+      })
+
+      // Reload data to show new analysis
+      if (params.id) {
+        await loadRepData(params.id as string)
+      }
+    } catch (error) {
+      console.error('Analysis error:', error)
+      toast.error('Analyse mislukt', {
+        description: error instanceof Error ? error.message : 'Onbekende fout'
+      })
+    } finally {
+      setAnalyzingCallId(null)
     }
   }
 
@@ -288,17 +329,19 @@ export default function RepProfilePage() {
               </div>
             ) : (
               calls.map((call) => (
-                <Link
+                <div
                   key={call.id}
-                  href={`/calls/${call.id}`}
-                  className="block px-6 py-4 hover:bg-gray-50 transition-colors"
+                  className="px-6 py-4 hover:bg-gray-50 transition-colors"
                 >
                   <div className="flex items-center justify-between">
-                    <div className="flex-1">
+                    <Link
+                      href={`/calls/${call.id}`}
+                      className="flex-1"
+                    >
                       <div className="flex items-center gap-3 mb-2">
-                        {call.customer_name && (
+                        {call.meeting_title && (
                           <span className="font-medium text-gray-900">
-                            {call.customer_name}
+                            {call.meeting_title}
                           </span>
                         )}
                         {call.analysis && (
@@ -308,6 +351,16 @@ export default function RepProfilePage() {
                             )}`}
                           >
                             {call.analysis.overall_rating.replace('_', ' ').toUpperCase()}
+                          </span>
+                        )}
+                        {!call.analysis && call.transcript && call.transcript.length > 50 && (
+                          <span className="px-2 py-1 text-xs font-medium rounded-full bg-purple-100 text-purple-800">
+                            KLAAR VOOR ANALYSE
+                          </span>
+                        )}
+                        {!call.analysis && (!call.transcript || call.transcript.length < 50) && (
+                          <span className="px-2 py-1 text-xs font-medium rounded-full bg-gray-100 text-gray-600">
+                            GEEN TRANSCRIPT
                           </span>
                         )}
                       </div>
@@ -322,21 +375,49 @@ export default function RepProfilePage() {
                         </div>
                         {call.customer_email && <span>{call.customer_email}</span>}
                       </div>
-                    </div>
-                    {call.analysis && (
-                      <div className="text-right ml-4">
-                        <p className="text-sm text-gray-600 mb-1">Score</p>
-                        <p
-                          className={`text-2xl font-bold ${getScoreColor(
-                            call.analysis.framework_score
-                          )}`}
+                    </Link>
+
+                    <div className="flex items-center gap-3 ml-4">
+                      {call.analysis ? (
+                        <div className="text-right">
+                          <p className="text-sm text-gray-600 mb-1">DSA Score</p>
+                          <p
+                            className={`text-2xl font-bold ${getScoreColor(
+                              call.analysis.framework_score
+                            )}`}
+                          >
+                            {call.analysis.framework_score}
+                          </p>
+                        </div>
+                      ) : call.transcript && call.transcript.length > 50 ? (
+                        <button
+                          onClick={(e) => {
+                            e.preventDefault()
+                            analyzeCall(call.id)
+                          }}
+                          disabled={analyzingCallId === call.id}
+                          className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-purple-600 to-primary-600 text-white font-medium rounded-lg hover:from-purple-700 hover:to-primary-700 transition-all disabled:opacity-50 disabled:cursor-not-allowed shadow-sm hover:shadow-md"
                         >
-                          {call.analysis.framework_score}
-                        </p>
-                      </div>
-                    )}
+                          {analyzingCallId === call.id ? (
+                            <>
+                              <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                              <span>Analyseren...</span>
+                            </>
+                          ) : (
+                            <>
+                              <Sparkles className="w-4 h-4" />
+                              <span>DSA Analyseer</span>
+                            </>
+                          )}
+                        </button>
+                      ) : (
+                        <div className="text-sm text-gray-500 italic">
+                          Transcript te kort
+                        </div>
+                      )}
+                    </div>
                   </div>
-                </Link>
+                </div>
               ))
             )}
           </div>
