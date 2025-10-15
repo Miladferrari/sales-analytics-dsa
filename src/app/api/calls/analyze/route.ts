@@ -82,7 +82,12 @@ export async function POST(request: NextRequest) {
 
     // 5. FIRST: Classify the call (is it a sales call?)
     console.log('🤖 Frankie de Closer Bot - Classifying call...')
-    const classification = await classifyCall(call.transcript)
+
+    // Get participant count from call data
+    const participantCount = Array.isArray(call.participants) ? call.participants.length : 1
+    console.log(`   📊 Participants in call: ${participantCount}`)
+
+    const classification = await classifyCall(call.transcript, participantCount)
 
     // 6. If NOT a sales call, save rejection and return early
     if (!classification.isSalesCall) {
