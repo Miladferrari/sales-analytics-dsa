@@ -72,38 +72,64 @@ Geef je antwoord in dit EXACTE JSON formaat:
   "callType": "sales_call|team_meeting|demo|support|development|stand_up|unknown",
   "confidence": 0.95,
   "reasoning": "Korte technische uitleg",
-  "rejectionReason": "SUPER BELANGRIJK - Lees dit goed:
+  "rejectionReason": "FRANKIE'S PERSOONLIJKE FEEDBACK - Schrijf als een menselijke coach:
+
+  ✅ UITGEBREIDE FEEDBACK REGELS:
 
   Als SOLO CALL (1 deelnemer):
-  - ALTIJD VERMELDEN dat het een solo call is!
-  - Voor korte solo calls: 'Huh, dit is een solo call met 1 deelnemer (alleen jij). Geen prospect aanwezig, dus geen sales call. Je zei [vat samen wat er gezegd werd]. 🤷‍♂️'
-  - Voor lange solo calls: 'Dit is een solo call (1 deelnemer - alleen jij aanwezig). Geen prospect of lead in de call. Je besprak [vat samen wat besproken werd]. Geen sales gesprek zonder prospect!'
-  - Wees direct en duidelijk
+  - Begin met: 'Hey! Ik zie dat je hier solo was (1 deelnemer)...'
+  - Leg uit WAT je deed/besprak in detail
+  - Wees empathisch: 'Misschien was dit een oefensessie?' of 'Aan het voorbereiden?'
+  - Geef context waarom dit geen sales is
+  - Minimaal 2-3 zinnen
 
-  Als KORTE/DOMME call (<200 chars transcript) met meerdere deelnemers:
-  - Wees grappig en direct! Bijvoorbeeld: 'Yo, dit is letterlijk een 40 seconde begroeting waarin je Perry boy zei. Seriously? 😅 Geen sales, gewoon vibes.'
-  - Of: 'Haha wat is dit? Een test call van 7 minuten met yo I got ready x3. That's it. 0% sales 🤷‍♂️'
-  - Wees straight maar respectvol
-  - Nederlandse straattaal mag!
+  Als KORTE call (<200 chars):
+  - Begin met een grappige opmerking over de lengte
+  - Vat samen wat er gezegd werd
+  - Wees relatable en menselijk
+  - Bijvoorbeeld: 'Haha, korte en bondig! Dit was een snelle [type] waarin je...'
 
-  Als LANGE call (veel content) met meerdere deelnemers:
-  - Geef SPECIFIEKE details over wat besproken werd
-  - Noem namen, tickets, problemen, beslissingen
-  - Bijvoorbeeld: 'Dit was een team standup waarin Anatolii en Milad tickets doorliepen. Ze bespraken bugs in de restaurant configuratie, testing op staging, en deployment issues met de backend.'
-  - Wees informatief en nuttig
-  - Leg uit WAT er gebeurde, niet alleen dat het geen sales was
+  Als TEAM MEETING/STANDUP:
+  - Begin met: 'Dit was jullie [daily standup/team meeting/etc]...'
+  - SPECIFIEKE DETAILS: Wie was er? Wat bespraken jullie?
+  - Noem concrete onderwerpen, tickets, problemen
+  - Geef een samenvatting van beslissingen/actiepunten
+  - Wees informatief en nuttig (3-5 zinnen)
+  - Bijvoorbeeld: 'Dit was de daily standup met Anatolii en Milad. Jullie bespraken:
+    • De Google Calendar integratie die nog bugs heeft
+    • Restaurant onboarding voor Sushi World die vandaag live moet
+    • Backend deployment issues met de QR code generator
+    Geen sales, gewoon teamwork! 💪'
+
+  Als DEVELOPMENT/TECHNICAL:
+  - Leg uit welke technische zaken besproken werden
+  - Noem specifieke bugs, features, of problemen
+  - Geef context over waarom dit belangrijk was
+  - Wees gedetailleerd (3-4 zinnen)
+
+  Als DEMO/SUPPORT:
+  - Wie kreeg de demo/hulp?
+  - Wat werd gedemonstreerd/opgelost?
+  - Hoe verliep het?
+
+  BELANGRIJK:
+  - Minimaal 2-3 zinnen (liever 4-5 voor lange calls)
+  - Gebruik concrete details uit het transcript
+  - Noem namen, onderwerpen, problemen
+  - Wees persoonlijk en menselijk
+  - Geen generieke feedback!
+  - Emoji's mogen ✨
   "
 }
 
 BELANGRIJK:
 - Alleen "sales_call" als er ECHT een prospect/lead aanwezig is
-- 🚨 SOLO CALLS (1 deelnemer): ALTIJD non-sales + vermeld dat het solo is in rejectionReason
+- 🚨 SOLO CALLS (1 deelnemer): ALTIJD non-sales + vermeld dat het solo is
 - Wees EERLIJK en DIRECT - geen bullshit
-- Voor korte calls: wees grappig maar to the point
-- Voor lange calls: wees informatief met concrete details
-- Voor solo calls: altijd vermelden dat er 1 deelnemer was (alleen de rep)
-- Als transcript <200 chars: keep it real en wees straight
-- Als transcript >1000 chars: geef diepgaande samenvatting
+- GEDETAILLEERD: minimaal 2-3 zinnen, liever 4-5 voor lange calls
+- SPECIFIEK: noem namen, onderwerpen, beslissingen
+- MENSELIJK: alsof je tegen een vriend praat
+- Voor lange calls: geef uitgebreide samenvatting met concrete details
 - Be confident: 80%+ zeker = hoge confidence`
 
   try {
@@ -119,8 +145,8 @@ BELANGRIJK:
           content: prompt
         }
       ],
-      temperature: 0.5, // Iets hoger voor meer persoonlijkheid
-      max_tokens: 800, // Veel ruimte voor grappige/diepgaande berichten
+      temperature: 0.6, // Iets hoger voor meer persoonlijkheid en variatie
+      max_tokens: 1200, // Extra ruimte voor uitgebreide, persoonlijke feedback
       response_format: { type: 'json_object' }
     })
 

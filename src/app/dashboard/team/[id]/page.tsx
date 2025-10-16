@@ -79,6 +79,22 @@ export default function TeamMemberPage() {
     loadRepData()
   }, [repId])
 
+  // Block background scroll when call details slide-over is open
+  useEffect(() => {
+    if (selectedCall) {
+      // Disable scroll on body
+      document.body.style.overflow = 'hidden'
+    } else {
+      // Re-enable scroll on body
+      document.body.style.overflow = 'unset'
+    }
+
+    // Cleanup: always restore scroll when component unmounts
+    return () => {
+      document.body.style.overflow = 'unset'
+    }
+  }, [selectedCall])
+
   async function loadRepData() {
     try {
       // Load rep details (including archived)
@@ -146,15 +162,16 @@ export default function TeamMemberPage() {
     setLoadingCallDetails(true)
 
     try {
-      // Load analysis for this call
+      // Load analysis for this call (get most recent if multiple exist)
       const { data: analysisData, error: analysisError } = await supabase
         .from('analysis')
         .select('*')
         .eq('call_id', call.id)
-        .single()
+        .order('analyzed_at', { ascending: false })
+        .limit(1)
 
-      if (!analysisError && analysisData) {
-        setSelectedCallAnalysis(analysisData)
+      if (!analysisError && analysisData && analysisData.length > 0) {
+        setSelectedCallAnalysis(analysisData[0])
       } else {
         setSelectedCallAnalysis(null)
       }
@@ -821,7 +838,7 @@ export default function TeamMemberPage() {
                   }
 
                   return (
-                    <button
+                    <div
                       key={call.id}
                       onClick={() => loadCallDetails(call)}
                       className="w-full text-left px-4 sm:px-5 py-4 hover:bg-gray-50 transition-colors cursor-pointer group"
@@ -873,7 +890,8 @@ export default function TeamMemberPage() {
 
                         {/* Right: Score Badge + Arrow - Responsive */}
                         <div className="flex items-center justify-between sm:justify-end gap-2 sm:gap-3 ml-10 sm:ml-0 flex-shrink-0">
-                          {status === 'completed' && analysis ? (
+                          {/* If analysis exists, show badge (completed or not) */}
+                          {analysis ? (
                             analysis.is_sales_call === false ? (
                               <span className="inline-flex items-center px-2.5 py-1 sm:px-3 sm:py-1.5 rounded-lg text-xs sm:text-sm font-medium bg-gray-100 text-gray-700 border border-gray-300">
                                 <span className="hidden sm:inline">Geen sales call</span>
@@ -888,7 +906,7 @@ export default function TeamMemberPage() {
                                 <span className="hidden sm:inline">Score: </span>{score}
                               </span>
                             )
-                          ) : status === 'analyzing' ? (
+                          ) : status === 'analyzing' || analyzingCallId === call.id ? (
                             <span className="inline-flex items-center px-2.5 py-1 sm:px-3 sm:py-1.5 rounded-lg text-xs font-medium bg-blue-100 text-blue-700">
                               <svg className="animate-spin -ml-0.5 mr-1.5 h-3 w-3" fill="none" viewBox="0 0 24 24">
                                 <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
@@ -903,25 +921,14 @@ export default function TeamMemberPage() {
                               <span className="sm:hidden">Wachtrij</span>
                             </span>
                           ) : call.transcript && call.transcript.length > 50 ? (
-                            analyzingCallId === call.id ? (
-                              <span className="inline-flex items-center px-2.5 py-1 sm:px-3 sm:py-1.5 rounded-lg text-xs font-medium bg-blue-100 text-blue-700">
-                                <svg className="animate-spin -ml-0.5 mr-1.5 h-3 w-3" fill="none" viewBox="0 0 24 24">
-                                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                                </svg>
-                                <span className="hidden sm:inline">Analyseren...</span>
-                                <span className="sm:hidden">...</span>
-                              </span>
-                            ) : (
-                              <button
-                                onClick={(e) => analyzeCall(call.id, e)}
-                                className="inline-flex items-center gap-1.5 px-2.5 py-1 sm:px-3 sm:py-1.5 rounded-lg text-xs font-medium bg-gradient-to-r from-purple-600 to-indigo-600 text-white hover:from-purple-700 hover:to-indigo-700 transition-all shadow-sm hover:shadow-md"
-                              >
-                                <Sparkles className="w-3 h-3" />
-                                <span className="hidden sm:inline">DSA Analyseer</span>
-                                <span className="sm:hidden">Analyseer</span>
-                              </button>
-                            )
+                            <button
+                              onClick={(e) => analyzeCall(call.id, e)}
+                              className="inline-flex items-center gap-1.5 px-2.5 py-1 sm:px-3 sm:py-1.5 rounded-lg text-xs font-medium bg-gradient-to-r from-purple-600 to-indigo-600 text-white hover:from-purple-700 hover:to-indigo-700 transition-all shadow-sm hover:shadow-md"
+                            >
+                              <Sparkles className="w-3 h-3" />
+                              <span className="hidden sm:inline">DSA Analyseer</span>
+                              <span className="sm:hidden">Analyseer</span>
+                            </button>
                           ) : (
                             <span className="text-xs text-gray-400">
                               <span className="hidden sm:inline">Geen transcript</span>
@@ -931,7 +938,7 @@ export default function TeamMemberPage() {
                           <ChevronRight className="w-4 h-4 sm:w-5 sm:h-5 text-gray-400 group-hover:text-indigo-600 transition-colors flex-shrink-0" />
                         </div>
                       </div>
-                    </button>
+                    </div>
                   )
                 })}
               </div>
@@ -1299,11 +1306,35 @@ export default function TeamMemberPage() {
                       <div className="mb-6">
                         {selectedCallAnalysis ? (
                           selectedCallAnalysis.is_sales_call === false ? (
-                            <div className="flex items-center gap-3">
-                              <span className="text-sm font-medium text-gray-600">Call Type:</span>
-                              <div className="inline-flex items-center gap-2 px-4 py-2 rounded-lg border-2 font-semibold bg-gray-100 text-gray-700 border-gray-300">
-                                <AlertCircle className="w-5 h-5" />
-                                <span>Geen sales call</span>
+                            <div>
+                              {/* Responsive layout: vertical on mobile, horizontal on desktop */}
+                              <div className="flex flex-col lg:flex-row lg:items-center gap-3">
+                                {/* Label */}
+                                <span className="text-sm font-medium text-gray-600 whitespace-nowrap">Call Type:</span>
+
+                                {/* Badges container */}
+                                <div className="flex flex-col sm:flex-row sm:flex-wrap items-start sm:items-center gap-2.5 sm:gap-2">
+                                  {/* Main badge */}
+                                  <div className="inline-flex items-center gap-2 px-4 py-2 rounded-lg border-2 font-semibold bg-gray-100 text-gray-700 border-gray-300">
+                                    <AlertCircle className="w-5 h-5" />
+                                    <span>Geen sales call</span>
+                                  </div>
+
+                                  {/* Classification badges - next to main badge on desktop, below on mobile */}
+                                  <div className="flex flex-wrap items-center gap-2">
+                                    <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium bg-gray-50 text-gray-700 border border-gray-200">
+                                      📋 {selectedCallAnalysis.call_type === 'team_meeting' ? 'Team Meeting' :
+                                           selectedCallAnalysis.call_type === 'demo' ? 'Demo' :
+                                           selectedCallAnalysis.call_type === 'support' ? 'Support' :
+                                           selectedCallAnalysis.call_type || 'Unknown'}
+                                    </span>
+                                    {selectedCallAnalysis.confidence_score && (
+                                      <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium bg-green-50 text-green-700 border border-green-200">
+                                        ✓ {(selectedCallAnalysis.confidence_score * 100).toFixed(0)}% zeker
+                                      </span>
+                                    )}
+                                  </div>
+                                </div>
                               </div>
                             </div>
                           ) : (
@@ -1347,74 +1378,47 @@ export default function TeamMemberPage() {
                               Frankie de Closer Bot
                             </h3>
 
-                            {/* Check if analysis exists */}
-                            {selectedCallAnalysis ? (
-                              <>
-                                {/* NON-SALES CALL - Single Chat Bubble */}
-                                {selectedCallAnalysis.is_sales_call === false ? (
-                                  <div className="py-2">
-                                    <div className="flex gap-3 items-end">
-                                      {/* Avatar */}
-                                      <div className="w-10 h-10 rounded-full bg-gradient-to-br from-purple-500 to-indigo-600 flex items-center justify-center flex-shrink-0 shadow-md">
-                                        <span className="text-xl">🤖</span>
-                                      </div>
-
-                                      {/* Single Speech Bubble with all content */}
-                                      <div className="flex-1 max-w-2xl">
-                                        <div className="flex items-baseline gap-2 mb-1 ml-1">
-                                          <span className="text-xs font-semibold text-gray-900">Frankie</span>
-                                          <span className="text-xs text-gray-400">net</span>
+                            {/* Scrollable chat container with max height */}
+                            <div className="max-h-[500px] overflow-y-auto pr-2 scrollbar-thin scrollbar-thumb-gray-300 scrollbar-track-gray-100">
+                              {/* Check if analysis exists */}
+                              {selectedCallAnalysis ? (
+                                <>
+                                          {/* NON-SALES CALL - Clean Chat Bubbles */}
+                                  {selectedCallAnalysis.is_sales_call === false ? (
+                                    <div className="space-y-4 py-2">
+                                      {/* Bubble 1: Greeting */}
+                                      <div className="flex gap-3 items-end">
+                                        <div className="w-10 h-10 rounded-full bg-gradient-to-br from-purple-500 to-indigo-600 flex items-center justify-center flex-shrink-0 shadow-md">
+                                          <span className="text-xl">🤖</span>
                                         </div>
-
-                                        <div className="relative">
-                                          {/* Speech bubble tail */}
-                                          <div className="absolute -left-2 bottom-4 w-0 h-0 border-b-[14px] border-b-gray-100 border-r-[14px] border-r-transparent"></div>
-
-                                          {/* Main bubble */}
-                                          <div className="bg-gray-100 rounded-2xl rounded-bl-sm px-5 py-4 shadow-sm">
-                                            <div className="space-y-4">
-                                              {/* Greeting */}
+                                        <div className="flex-1 max-w-2xl">
+                                          <div className="flex items-baseline gap-2 mb-1 ml-1">
+                                            <span className="text-xs font-semibold text-gray-900">Frankie</span>
+                                            <span className="text-xs text-gray-400">net</span>
+                                          </div>
+                                          <div className="relative">
+                                            <div className="absolute -left-2 bottom-4 w-0 h-0 border-b-[14px] border-b-gray-100 border-r-[14px] border-r-transparent"></div>
+                                            <div className="bg-gray-100 rounded-2xl rounded-bl-sm px-5 py-3 shadow-sm">
                                               <p className="text-sm text-gray-900 leading-relaxed">
                                                 Hey! Ik heb deze call geanalyseerd 👋
                                               </p>
-
-                                              {/* Main finding */}
-                                              <p className="text-sm text-gray-900 leading-relaxed">
-                                                Dit is <span className="font-semibold">geen sales gesprek</span>. {selectedCallAnalysis.rejection_reason || 'Het gesprek heeft niet de kenmerken van een sales call.'}
-                                              </p>
-
-                                              {/* Details with tags */}
-                                              <div className="pt-3 border-t border-gray-200">
-                                                <p className="text-sm text-gray-900 leading-relaxed mb-2">
-                                                  Wat ik heb gevonden:
-                                                </p>
-                                                <div className="flex flex-wrap gap-2">
-                                                  <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-white text-gray-700 shadow-sm">
-                                                    📋 {selectedCallAnalysis.call_type === 'team_meeting' ? 'Team Meeting' :
-                                                         selectedCallAnalysis.call_type === 'demo' ? 'Demo' :
-                                                         selectedCallAnalysis.call_type === 'support' ? 'Support' :
-                                                         selectedCallAnalysis.call_type || 'Unknown'}
-                                                  </span>
-                                                  {selectedCallAnalysis.confidence_score && (
-                                                    <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-white text-green-700 shadow-sm">
-                                                      ✓ {(selectedCallAnalysis.confidence_score * 100).toFixed(0)}% zeker
-                                                    </span>
-                                                  )}
-                                                </div>
-                                              </div>
-
-                                              {/* Explanation */}
-                                              <div className="pt-3 border-t border-gray-200 bg-gradient-to-br from-indigo-50 to-purple-50 -mx-5 -mb-4 px-5 py-3 rounded-b-2xl">
-                                                <p className="text-sm text-gray-900 leading-relaxed">
-                                                  💡 <span className="font-medium">Daarom geen DSA score:</span> Het DSA framework analyseert alleen echte sales gesprekken met prospects/leads.
-                                                </p>
-                                              </div>
                                             </div>
                                           </div>
                                         </div>
                                       </div>
+
+                                      {/* Bubble 2: Main Analysis (only this now!) */}
+                                      <div className="flex gap-3 items-end">
+                                        <div className="w-10 h-10 flex-shrink-0"></div>
+                                        <div className="flex-1 max-w-2xl">
+                                          <div className="bg-gray-100 rounded-2xl px-5 py-4 shadow-sm">
+                                            <p className="text-sm text-gray-900 leading-relaxed">
+                                              Dit is <span className="font-semibold">geen sales gesprek</span>. {selectedCallAnalysis.rejection_reason || 'Het gesprek heeft niet de kenmerken van een sales call.'}
+                                            </p>
+                                          </div>
+                                        </div>
+                                      </div>
                                     </div>
-                                  </div>
                                 ) : selectedCallAnalysis.analysis_data?.coaching_feedback ? (
                                   /* SALES CALL - Show full DSA analysis */
                                   <div className="space-y-5">
@@ -1478,16 +1482,29 @@ export default function TeamMemberPage() {
                                       Analyse wordt verwerkt...
                                     </p>
                                   </div>
-                                )}
-                              </>
-                            ) : (
-                              <div className="text-center py-8">
-                                <p className="text-sm text-gray-500">
-                                  Nog geen analyse beschikbaar
-                                </p>
-                                <p className="text-xs text-gray-400 mt-1">
-                                  De AI-analyse wordt automatisch uitgevoerd zodra het transcript beschikbaar is
-                                </p>
+                                  )}
+                                </>
+                              ) : (
+                                <div className="text-center py-8">
+                                  <p className="text-sm text-gray-500">
+                                    Nog geen analyse beschikbaar
+                                  </p>
+                                  <p className="text-xs text-gray-400 mt-1">
+                                    De AI-analyse wordt automatisch uitgevoerd zodra het transcript beschikbaar is
+                                  </p>
+                                </div>
+                              )}
+                            </div>
+                            {/* End of scrollable container */}
+
+                            {/* DSA Explanation (only for non-sales calls) */}
+                            {selectedCallAnalysis && selectedCallAnalysis.is_sales_call === false && (
+                              <div className="mt-4 pt-4 border-t border-gray-200">
+                                <div className="bg-gradient-to-br from-indigo-50 to-purple-50 border border-indigo-100 rounded-lg px-4 py-3">
+                                  <p className="text-xs text-gray-700 leading-relaxed">
+                                    💡 <span className="font-medium">Waarom geen DSA score?</span> Het DSA framework analyseert alleen echte sales gesprekken met prospects/leads.
+                                  </p>
+                                </div>
                               </div>
                             )}
                           </div>

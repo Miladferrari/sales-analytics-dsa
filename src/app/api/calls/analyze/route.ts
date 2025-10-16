@@ -48,20 +48,21 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // 2. Check if already analyzed
+    // 2. Check if already analyzed (use limit(1) instead of single() to handle duplicates)
     const { data: existingAnalysis } = await supabase
       .from('analysis')
-      .select('id')
+      .select('id, framework_score')
       .eq('call_id', callId)
-      .single()
+      .limit(1)
 
-    if (existingAnalysis) {
+    if (existingAnalysis && existingAnalysis.length > 0) {
       console.log(`⚠️ Call ${callId} already has analysis`)
       return NextResponse.json({
         success: true,
         message: 'Call already analyzed',
         callId,
-        analysisId: existingAnalysis.id
+        analysisId: existingAnalysis[0].id,
+        score: existingAnalysis[0].framework_score
       })
     }
 
