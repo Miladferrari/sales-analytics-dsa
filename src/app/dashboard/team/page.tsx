@@ -39,6 +39,8 @@ export default function TeamPage() {
     name: '',
     email: '',
   })
+  const [profileImage, setProfileImage] = useState<File | null>(null)
+  const [profileImagePreview, setProfileImagePreview] = useState<string | null>(null)
   const [availableTeams, setAvailableTeams] = useState<string[]>([])
   const [selectedTeams, setSelectedTeams] = useState<string[]>([])
   const [loadingTeams, setLoadingTeams] = useState(false)
@@ -90,6 +92,37 @@ export default function TeamPage() {
         ? prev.filter(t => t !== team)
         : [...prev, team]
     )
+  }
+
+  function handleImageChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    if (file) {
+      // Check file size (max 5MB)
+      if (file.size > 5 * 1024 * 1024) {
+        showToast('error', 'Afbeelding te groot. Maximaal 5MB toegestaan.')
+        return
+      }
+
+      // Check file type
+      if (!file.type.startsWith('image/')) {
+        showToast('error', 'Alleen afbeeldingen zijn toegestaan.')
+        return
+      }
+
+      setProfileImage(file)
+
+      // Create preview
+      const reader = new FileReader()
+      reader.onloadend = () => {
+        setProfileImagePreview(reader.result as string)
+      }
+      reader.readAsDataURL(file)
+    }
+  }
+
+  function removeProfileImage() {
+    setProfileImage(null)
+    setProfileImagePreview(null)
   }
 
   async function loadArchivedCount() {
@@ -227,13 +260,44 @@ export default function TeamPage() {
         return
       }
 
+      let profileImageUrl = null
+
+      // Upload profile image if provided
+      if (profileImage) {
+        const fileExt = profileImage.name.split('.').pop()
+        const fileName = `${Date.now()}-${Math.random().toString(36).substring(7)}.${fileExt}`
+        const filePath = `${fileName}`
+
+        const { error: uploadError } = await supabase.storage
+          .from('sales-rep-avatars')
+          .upload(filePath, profileImage, {
+            cacheControl: '3600',
+            upsert: false
+          })
+
+        if (uploadError) {
+          console.error('Upload error:', uploadError)
+          showToast('error', 'Fout bij uploaden profielfoto')
+          setAddLoading(false)
+          return
+        }
+
+        // Get public URL
+        const { data: { publicUrl } } = supabase.storage
+          .from('sales-rep-avatars')
+          .getPublicUrl(filePath)
+
+        profileImageUrl = publicUrl
+      }
+
       const { data, error } = await supabase
         .from('sales_reps')
         .insert({
           name: formData.name.trim(),
           email: formData.email.toLowerCase().trim(),
           qualification_status: 'unqualified',
-          fathom_teams: selectedTeams, // Add selected teams
+          fathom_teams: selectedTeams,
+          profile_image_url: profileImageUrl,
         })
         .select()
         .single()
@@ -253,6 +317,8 @@ export default function TeamPage() {
         name: '',
         email: '',
       })
+      setProfileImage(null)
+      setProfileImagePreview(null)
       setSelectedTeams([])
       setShowAddModal(false)
 
@@ -302,102 +368,100 @@ export default function TeamPage() {
 
   return (
     <DashboardLayout>
-      <div className="flex flex-col lg:flex-row gap-6 p-4 sm:p-6">
-        {/* Main Content */}
-        <div className="flex-1 min-w-0">
-          {/* Header */}
-          <div className="mb-6 sm:mb-8">
-            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 sm:gap-4">
-              <div>
-                <h1 className="text-xl sm:text-2xl font-semibold text-gray-900 mb-1">Team</h1>
-                <p className="text-xs sm:text-sm text-gray-500">Beheer je sales medewerkers</p>
-              </div>
-              <button
-                onClick={() => setShowAddModal(true)}
-                className="self-start sm:self-auto px-4 py-2.5 bg-indigo-600 text-white text-sm font-medium rounded-lg hover:bg-indigo-700 transition-colors shadow-sm"
-              >
-                + Medewerker Toevoegen
-              </button>
+      <div className="p-4 sm:p-6">
+        {/* Header */}
+        <div className="mb-6 sm:mb-8">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 sm:gap-4">
+            <div>
+              <h1 className="text-xl sm:text-2xl font-semibold text-gray-900 mb-1">Team</h1>
+              <p className="text-xs sm:text-sm text-gray-500">Beheer je sales medewerkers</p>
             </div>
-          </div>
-
-          {/* Stats Overview - Dashboard Style */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-5 mb-6">
-            <div className="bg-white rounded-lg border border-gray-200 p-5 hover:shadow-md transition-shadow">
-              <div className="flex items-center justify-between mb-4">
-                <div className="w-10 h-10 bg-indigo-50 rounded-lg flex items-center justify-center">
-                  <svg className="w-5 h-5 text-indigo-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" />
-                  </svg>
-                </div>
-              </div>
-              <p className="text-sm text-gray-600 mb-1">Totaal Team</p>
-              <div className="flex items-baseline gap-2">
-                <span className="text-3xl font-semibold text-gray-900">{reps.length}</span>
-                <span className="text-sm text-gray-500">medewerkers</span>
-              </div>
-            </div>
-
-            <div className="bg-white rounded-lg border border-gray-200 p-5 hover:shadow-md transition-shadow">
-              <div className="flex items-center justify-between mb-4">
-                <div className="w-10 h-10 bg-emerald-50 rounded-lg flex items-center justify-center">
-                  <svg className="w-5 h-5 text-emerald-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-                  </svg>
-                </div>
-                <span className="text-xs font-medium px-2.5 py-1 rounded-full bg-emerald-100 text-emerald-700">
-                  {reps.length > 0 ? Math.round((qualifiedCount / reps.length) * 100) : 0}%
-                </span>
-              </div>
-              <p className="text-sm text-gray-600 mb-1">Qualified</p>
-              <div className="flex items-baseline gap-2">
-                <span className="text-3xl font-semibold text-emerald-600">{qualifiedCount}</span>
-                <span className="text-sm text-gray-500">van {reps.length}</span>
-              </div>
-            </div>
-
-            <div className="bg-white rounded-lg border border-gray-200 p-5 hover:shadow-md transition-shadow">
-              <div className="flex items-center justify-between mb-4">
-                <div className="w-10 h-10 bg-amber-50 rounded-lg flex items-center justify-center">
-                  <svg className="w-5 h-5 text-amber-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
-                  </svg>
-                </div>
-                <span className="text-xs font-medium px-2.5 py-1 rounded-full bg-amber-100 text-amber-700">
-                  {reps.length > 0 ? Math.round((unqualifiedCount / reps.length) * 100) : 0}%
-                </span>
-              </div>
-              <p className="text-sm text-gray-600 mb-1">Unqualified</p>
-              <div className="flex items-baseline gap-2">
-                <span className="text-3xl font-semibold text-amber-600">{unqualifiedCount}</span>
-                <span className="text-sm text-gray-500">van {reps.length}</span>
-              </div>
-            </div>
-
-            {/* Archief Card - Smaller & Clickable */}
             <button
-              onClick={() => {
-                setShowArchived(true)
-                loadArchivedReps()
-              }}
-              className="bg-gradient-to-br from-gray-50 to-gray-100 rounded-lg border-2 border-dashed border-gray-300 p-4 hover:shadow-md hover:border-gray-400 transition-all text-left group"
+              onClick={() => setShowAddModal(true)}
+              className="self-start sm:self-auto px-4 py-2.5 bg-indigo-600 text-white text-sm font-medium rounded-lg hover:bg-indigo-700 transition-colors shadow-sm"
             >
-              <div className="flex items-center justify-center mb-3">
-                <div className="w-8 h-8 bg-gray-200 rounded-lg flex items-center justify-center group-hover:bg-gray-300 transition-colors">
-                  <svg className="w-4 h-4 text-gray-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4" />
-                  </svg>
-                </div>
-              </div>
-              <p className="text-xs text-gray-500 mb-1 text-center">Archief</p>
-              <div className="flex items-center justify-center">
-                <span className="text-2xl font-semibold text-gray-700">{archivedCount}</span>
-              </div>
-              <p className="text-xs text-gray-400 text-center mt-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                Klik om te bekijken
-              </p>
+              + Medewerker Toevoegen
             </button>
           </div>
+        </div>
+
+        {/* Stats Overview - Dashboard Style */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-5 mb-6">
+          <div className="bg-white rounded-lg border border-gray-200 p-5 hover:shadow-md transition-shadow">
+            <div className="flex items-center justify-between mb-4">
+              <div className="w-10 h-10 bg-indigo-50 rounded-lg flex items-center justify-center">
+                <svg className="w-5 h-5 text-indigo-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" />
+                </svg>
+              </div>
+            </div>
+            <p className="text-sm text-gray-600 mb-1">Totaal Team</p>
+            <div className="flex items-baseline gap-2">
+              <span className="text-3xl font-semibold text-gray-900">{reps.length}</span>
+              <span className="text-sm text-gray-500">medewerkers</span>
+            </div>
+          </div>
+
+          <div className="bg-white rounded-lg border border-gray-200 p-5 hover:shadow-md transition-shadow">
+            <div className="flex items-center justify-between mb-4">
+              <div className="w-10 h-10 bg-emerald-50 rounded-lg flex items-center justify-center">
+                <svg className="w-5 h-5 text-emerald-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+              </div>
+              <span className="text-xs font-medium px-2.5 py-1 rounded-full bg-emerald-100 text-emerald-700">
+                {reps.length > 0 ? Math.round((qualifiedCount / reps.length) * 100) : 0}%
+              </span>
+            </div>
+            <p className="text-sm text-gray-600 mb-1">Qualified</p>
+            <div className="flex items-baseline gap-2">
+              <span className="text-3xl font-semibold text-emerald-600">{qualifiedCount}</span>
+              <span className="text-sm text-gray-500">van {reps.length}</span>
+            </div>
+          </div>
+
+          <div className="bg-white rounded-lg border border-gray-200 p-5 hover:shadow-md transition-shadow">
+            <div className="flex items-center justify-between mb-4">
+              <div className="w-10 h-10 bg-amber-50 rounded-lg flex items-center justify-center">
+                <svg className="w-5 h-5 text-amber-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
+                </svg>
+              </div>
+              <span className="text-xs font-medium px-2.5 py-1 rounded-full bg-amber-100 text-amber-700">
+                {reps.length > 0 ? Math.round((unqualifiedCount / reps.length) * 100) : 0}%
+              </span>
+            </div>
+            <p className="text-sm text-gray-600 mb-1">Unqualified</p>
+            <div className="flex items-baseline gap-2">
+              <span className="text-3xl font-semibold text-amber-600">{unqualifiedCount}</span>
+              <span className="text-sm text-gray-500">van {reps.length}</span>
+            </div>
+          </div>
+
+          {/* Archief Card - Smaller & Clickable */}
+          <button
+            onClick={() => {
+              setShowArchived(true)
+              loadArchivedReps()
+            }}
+            className="bg-gradient-to-br from-gray-50 to-gray-100 rounded-lg border-2 border-dashed border-gray-300 p-4 hover:shadow-md hover:border-gray-400 transition-all text-left group"
+          >
+            <div className="flex items-center justify-center mb-3">
+              <div className="w-8 h-8 bg-gray-200 rounded-lg flex items-center justify-center group-hover:bg-gray-300 transition-colors">
+                <svg className="w-4 h-4 text-gray-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4" />
+                </svg>
+              </div>
+            </div>
+            <p className="text-xs text-gray-500 mb-1 text-center">Archief</p>
+            <div className="flex items-center justify-center">
+              <span className="text-2xl font-semibold text-gray-700">{archivedCount}</span>
+            </div>
+            <p className="text-xs text-gray-400 text-center mt-1 opacity-0 group-hover:opacity-100 transition-opacity">
+              Klik om te bekijken
+            </p>
+          </button>
+        </div>
 
         {/* Search and Filter */}
         <div className="bg-white rounded-lg border border-gray-200 p-4 sm:p-5 mb-6">
@@ -469,13 +533,23 @@ export default function TeamPage() {
                   <div className="flex flex-col items-center text-center">
                     {/* Large Avatar */}
                     <div className="relative mb-4">
-                      <div className={`w-28 h-28 rounded-full flex items-center justify-center text-white font-bold text-4xl shadow-lg ${
-                        rep.qualification_status === 'qualified'
-                          ? 'bg-gradient-to-br from-emerald-400 to-emerald-600'
-                          : 'bg-gradient-to-br from-indigo-400 to-indigo-600'
-                      }`}>
-                        {rep.name.split(' ').map(n => n[0]).join('').toUpperCase()}
-                      </div>
+                      {rep.profile_image_url ? (
+                        <div className="w-28 h-28 rounded-full overflow-hidden shadow-lg border-2 border-gray-200">
+                          <img
+                            src={rep.profile_image_url}
+                            alt={rep.name}
+                            className="w-full h-full object-cover"
+                          />
+                        </div>
+                      ) : (
+                        <div className={`w-28 h-28 rounded-full flex items-center justify-center text-white font-bold text-4xl shadow-lg ${
+                          rep.qualification_status === 'qualified'
+                            ? 'bg-gradient-to-br from-emerald-400 to-emerald-600'
+                            : 'bg-gradient-to-br from-indigo-400 to-indigo-600'
+                        }`}>
+                          {rep.name.split(' ').map(n => n[0]).join('').toUpperCase()}
+                        </div>
+                      )}
                     </div>
 
                     {/* Name */}
@@ -564,7 +638,6 @@ export default function TeamPage() {
             ))
           )}
         </div>
-        </div>
       </div>
 
       {/* Add Member Modal */}
@@ -601,6 +674,64 @@ export default function TeamPage() {
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none"
                     placeholder="Bijv. Jan de Vries"
                   />
+                </div>
+
+                {/* Profile Image Upload */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-3">
+                    Profielfoto <span className="text-gray-400 text-xs font-normal">(Optioneel)</span>
+                  </label>
+                  <div className="flex items-start gap-5">
+                    {/* Preview Circle */}
+                    <div className="flex-shrink-0">
+                      {profileImagePreview ? (
+                        <div className="relative w-24 h-24 rounded-full overflow-hidden shadow-md border-4 border-white ring-2 ring-indigo-100 group">
+                          <img
+                            src={profileImagePreview}
+                            alt="Preview"
+                            className="w-full h-full object-cover"
+                          />
+                          <button
+                            type="button"
+                            onClick={removeProfileImage}
+                            className="absolute inset-0 bg-black bg-opacity-60 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-all"
+                          >
+                            <svg className="w-8 h-8 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                            </svg>
+                          </button>
+                        </div>
+                      ) : (
+                        <div className="w-24 h-24 rounded-full bg-gradient-to-br from-indigo-400 via-indigo-500 to-indigo-600 flex items-center justify-center shadow-md border-4 border-white ring-2 ring-gray-100">
+                          <svg className="w-12 h-12 text-white opacity-80" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                          </svg>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Upload Info & Button */}
+                    <div className="flex-1 pt-1">
+                      <label className="cursor-pointer group">
+                        <div className="flex items-center justify-center gap-2 px-5 py-3 bg-gradient-to-r from-indigo-50 to-indigo-100 border-2 border-indigo-200 rounded-xl hover:from-indigo-100 hover:to-indigo-200 hover:border-indigo-300 transition-all text-sm font-semibold text-indigo-700 group-hover:shadow-md">
+                          <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
+                          </svg>
+                          Upload Profielfoto
+                        </div>
+                        <input
+                          type="file"
+                          accept="image/*"
+                          onChange={handleImageChange}
+                          className="hidden"
+                        />
+                      </label>
+                      <p className="text-xs text-gray-500 mt-2 leading-relaxed">
+                        Ondersteunde formaten: JPG, PNG, GIF<br />
+                        Maximale bestandsgrootte: 5MB
+                      </p>
+                    </div>
+                  </div>
                 </div>
 
                 <div>

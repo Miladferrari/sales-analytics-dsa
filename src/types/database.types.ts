@@ -17,6 +17,7 @@ export interface Database {
           email: string
           telegram_id: string | null
           qualification_status: 'qualified' | 'unqualified'
+          profile_image_url: string | null
           created_at: string
           updated_at: string
         }
@@ -26,6 +27,7 @@ export interface Database {
           email: string
           telegram_id?: string | null
           qualification_status: 'qualified' | 'unqualified'
+          profile_image_url?: string | null
           created_at?: string
           updated_at?: string
         }
@@ -35,6 +37,7 @@ export interface Database {
           email?: string
           telegram_id?: string | null
           qualification_status?: 'qualified' | 'unqualified'
+          profile_image_url?: string | null
           created_at?: string
           updated_at?: string
         }

@@ -128,21 +128,11 @@ export default function Sidebar() {
         isOpen ? 'translate-x-0' : '-translate-x-full'
       }`}>
         <div className="h-full w-64 lg:w-20 bg-white border-r border-gray-200 flex flex-col py-6 shadow-xl lg:shadow-none">
-          {/* Logo / Profile Photo */}
+          {/* Logo */}
           <div className="mb-8 px-6 lg:px-0 lg:flex lg:justify-center">
-            {profilePhoto ? (
-              <img
-                src={profilePhoto}
-                alt="Profile"
-                className="w-10 h-10 rounded-lg object-cover border border-gray-200"
-              />
-            ) : (
-              <div className="w-10 h-10 rounded-lg bg-indigo-600 flex items-center justify-center">
-                <span className="text-white font-semibold text-lg">
-                  {firstName ? firstName.charAt(0).toUpperCase() : 'S'}
-                </span>
-              </div>
-            )}
+            <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-indigo-600 to-indigo-700 flex items-center justify-center shadow-md">
+              <span className="text-white font-bold text-xl">S</span>
+            </div>
           </div>
 
           {/* Nav Items */}
@@ -182,13 +172,26 @@ export default function Sidebar() {
               onClick={() => handleNavClick('/dashboard/profile')}
               className={`relative w-full lg:w-12 h-12 rounded-lg flex items-center lg:justify-center px-4 lg:px-0 transition-all duration-200 group ${
                 isActive('/dashboard/profile')
-                  ? 'bg-indigo-50 text-indigo-600'
-                  : 'text-gray-400 hover:bg-gray-50 hover:text-gray-700'
+                  ? 'bg-indigo-50'
+                  : 'hover:bg-gray-50'
               }`}
               title="Profiel"
             >
-              <User className="w-5 h-5 flex-shrink-0" />
-              <span className="lg:hidden ml-3 text-sm font-medium">Profiel</span>
+              {/* Profile Photo or Fallback */}
+              {profilePhoto ? (
+                <img
+                  src={profilePhoto}
+                  alt="Profile"
+                  className="w-10 h-10 rounded-full object-cover ring-2 ring-indigo-100"
+                />
+              ) : (
+                <div className="w-10 h-10 rounded-full bg-gradient-to-br from-indigo-400 to-indigo-600 flex items-center justify-center ring-2 ring-indigo-100">
+                  <span className="text-white font-semibold text-base">
+                    {firstName ? firstName.charAt(0).toUpperCase() : 'U'}
+                  </span>
+                </div>
+              )}
+              <span className="lg:hidden ml-3 text-sm font-medium text-gray-700">Profiel</span>
               <div className="hidden lg:block absolute left-full ml-3 px-3 py-1.5 bg-gray-900 text-white text-xs rounded-md opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity whitespace-nowrap">
                 Profiel
               </div>
