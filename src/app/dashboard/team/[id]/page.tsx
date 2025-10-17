@@ -1421,58 +1421,137 @@ export default function TeamMemberPage() {
                                     </div>
                                 ) : selectedCallAnalysis.analysis_data?.coaching_feedback ? (
                                   /* SALES CALL - Show full DSA analysis */
-                                  <div className="space-y-5">
-                                    {/* Coaching Feedback */}
-                                    <div>
-                                      <h4 className="text-sm font-semibold text-gray-900 mb-2">
-                                        Feedback:
-                                      </h4>
-                                      <p className="text-sm text-gray-700 leading-relaxed">
-                                        {selectedCallAnalysis.analysis_data.coaching_feedback}
-                                      </p>
+                                  <div className="space-y-4 py-2">
+                                    {/* Greeting Bubble */}
+                                    <div className="flex gap-3 items-end">
+                                      <div className="w-10 h-10 rounded-full bg-gradient-to-br from-purple-500 to-indigo-600 flex items-center justify-center flex-shrink-0 shadow-md">
+                                        <span className="text-xl">🤖</span>
+                                      </div>
+                                      <div className="flex-1 max-w-2xl">
+                                        <div className="flex items-baseline gap-2 mb-1 ml-1">
+                                          <span className="text-xs font-semibold text-gray-900">Frankie</span>
+                                          <span className="text-xs text-gray-400">net</span>
+                                        </div>
+                                        <div className="relative">
+                                          <div className="absolute -left-2 bottom-4 w-0 h-0 border-b-[14px] border-b-white border-r-[14px] border-r-transparent"></div>
+                                          <div className="bg-white border border-gray-200 rounded-2xl rounded-bl-sm px-5 py-3 shadow-sm">
+                                            <p className="text-sm text-gray-900 leading-relaxed">
+                                              Hey! Ik heb je sales call geanalyseerd met het DSA framework 👋
+                                            </p>
+                                          </div>
+                                        </div>
+                                      </div>
                                     </div>
 
-                                    {/* Wins */}
+                                    {/* Coaching Feedback Bubble */}
+                                    <div className="flex gap-3 items-end">
+                                      <div className="w-10 h-10 flex-shrink-0"></div>
+                                      <div className="flex-1 max-w-2xl">
+                                        <div className="bg-white border border-gray-200 rounded-2xl px-6 py-4 shadow-sm">
+                                          <div className="flex items-start gap-3">
+                                            <div className="flex-shrink-0 mt-0.5">
+                                              <div className="w-6 h-6 rounded-full bg-blue-100 flex items-center justify-center">
+                                                <span className="text-xs">💬</span>
+                                              </div>
+                                            </div>
+                                            <div className="flex-1">
+                                              <h4 className="text-sm font-semibold text-gray-900 mb-2.5">
+                                                Feedback
+                                              </h4>
+                                              <p className="text-sm text-gray-700 leading-relaxed">
+                                                {selectedCallAnalysis.analysis_data.coaching_feedback}
+                                              </p>
+                                            </div>
+                                          </div>
+                                        </div>
+                                      </div>
+                                    </div>
+
+                                    {/* Wins Bubble */}
                                     {selectedCallAnalysis.analysis_data.wins && selectedCallAnalysis.analysis_data.wins.length > 0 && (
-                                      <div>
-                                        <h4 className="text-sm font-semibold text-gray-900 mb-2">
-                                          Dit ging goed:
-                                        </h4>
-                                        <ul className="space-y-1.5">
-                                          {selectedCallAnalysis.analysis_data.wins.map((win: string, index: number) => (
-                                            <li key={index} className="text-sm text-gray-700 leading-relaxed">
-                                              • {win}
-                                            </li>
-                                          ))}
-                                        </ul>
+                                      <div className="flex gap-3 items-end">
+                                        <div className="w-10 h-10 flex-shrink-0"></div>
+                                        <div className="flex-1 max-w-2xl">
+                                          <div className="bg-white border border-gray-200 rounded-2xl px-6 py-4 shadow-sm">
+                                            <div className="flex items-start gap-3">
+                                              <div className="flex-shrink-0 mt-0.5">
+                                                <div className="w-6 h-6 rounded-full bg-emerald-100 flex items-center justify-center">
+                                                  <span className="text-xs">✓</span>
+                                                </div>
+                                              </div>
+                                              <div className="flex-1">
+                                                <h4 className="text-sm font-semibold text-gray-900 mb-2.5">
+                                                  Dit ging goed
+                                                </h4>
+                                                <ul className="space-y-2">
+                                                  {selectedCallAnalysis.analysis_data.wins.map((win: string, index: number) => (
+                                                    <li key={index} className="text-sm text-gray-700 leading-relaxed flex items-start gap-2">
+                                                      <span className="text-emerald-600 mt-0.5">•</span>
+                                                      <span className="flex-1">{win}</span>
+                                                    </li>
+                                                  ))}
+                                                </ul>
+                                              </div>
+                                            </div>
+                                          </div>
+                                        </div>
                                       </div>
                                     )}
 
-                                    {/* Improvements */}
+                                    {/* Improvements Bubble */}
                                     {selectedCallAnalysis.analysis_data.improvements && selectedCallAnalysis.analysis_data.improvements.length > 0 && (
-                                      <div>
-                                        <h4 className="text-sm font-semibold text-gray-900 mb-2">
-                                          Dit moet beter:
-                                        </h4>
-                                        <ul className="space-y-1.5">
-                                          {selectedCallAnalysis.analysis_data.improvements.map((improvement: string, index: number) => (
-                                            <li key={index} className="text-sm text-gray-700 leading-relaxed">
-                                              • {improvement}
-                                            </li>
-                                          ))}
-                                        </ul>
+                                      <div className="flex gap-3 items-end">
+                                        <div className="w-10 h-10 flex-shrink-0"></div>
+                                        <div className="flex-1 max-w-2xl">
+                                          <div className="bg-white border border-gray-200 rounded-2xl px-6 py-4 shadow-sm">
+                                            <div className="flex items-start gap-3">
+                                              <div className="flex-shrink-0 mt-0.5">
+                                                <div className="w-6 h-6 rounded-full bg-amber-100 flex items-center justify-center">
+                                                  <span className="text-xs">⚡</span>
+                                                </div>
+                                              </div>
+                                              <div className="flex-1">
+                                                <h4 className="text-sm font-semibold text-gray-900 mb-2.5">
+                                                  Dit moet beter
+                                                </h4>
+                                                <ul className="space-y-2">
+                                                  {selectedCallAnalysis.analysis_data.improvements.map((improvement: string, index: number) => (
+                                                    <li key={index} className="text-sm text-gray-700 leading-relaxed flex items-start gap-2">
+                                                      <span className="text-amber-600 mt-0.5">•</span>
+                                                      <span className="flex-1">{improvement}</span>
+                                                    </li>
+                                                  ))}
+                                                </ul>
+                                              </div>
+                                            </div>
+                                          </div>
+                                        </div>
                                       </div>
                                     )}
 
-                                    {/* Sales Spiegel */}
+                                    {/* Sales Spiegel Bubble */}
                                     {selectedCallAnalysis.analysis_data.sales_spiegel_reflection && (
-                                      <div className="pt-4 border-t border-gray-200">
-                                        <h4 className="text-sm font-semibold text-gray-900 mb-2">
-                                          Zelfreflectie:
-                                        </h4>
-                                        <p className="text-sm text-gray-700 leading-relaxed">
-                                          {selectedCallAnalysis.analysis_data.sales_spiegel_reflection}
-                                        </p>
+                                      <div className="flex gap-3 items-end">
+                                        <div className="w-10 h-10 flex-shrink-0"></div>
+                                        <div className="flex-1 max-w-2xl">
+                                          <div className="bg-white border border-gray-200 rounded-2xl px-6 py-4 shadow-sm">
+                                            <div className="flex items-start gap-3">
+                                              <div className="flex-shrink-0 mt-0.5">
+                                                <div className="w-6 h-6 rounded-full bg-purple-100 flex items-center justify-center">
+                                                  <span className="text-xs">🪞</span>
+                                                </div>
+                                              </div>
+                                              <div className="flex-1">
+                                                <h4 className="text-sm font-semibold text-gray-900 mb-2.5">
+                                                  Zelfreflectie
+                                                </h4>
+                                                <p className="text-sm text-gray-700 leading-relaxed">
+                                                  {selectedCallAnalysis.analysis_data.sales_spiegel_reflection}
+                                                </p>
+                                              </div>
+                                            </div>
+                                          </div>
+                                        </div>
                                       </div>
                                     )}
                                   </div>
