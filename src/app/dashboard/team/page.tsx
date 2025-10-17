@@ -451,66 +451,112 @@ export default function TeamPage() {
           ) : (
             filteredReps.map((rep) => (
               <Link key={rep.id} href={`/dashboard/team/${rep.id}`}>
-                <div className="bg-white rounded-lg border border-gray-200 p-4 hover:shadow-md hover:border-indigo-200 transition-all cursor-pointer group">
-                  <div className="flex items-start gap-4">
-                    {/* Avatar */}
-                    <div className="relative flex-shrink-0">
-                      <div className={`w-12 h-12 rounded-full flex items-center justify-center text-white font-semibold text-base ${
+                <div className="bg-white rounded-xl border border-gray-200 p-6 hover:shadow-lg hover:border-indigo-300 transition-all cursor-pointer group relative">
+                  {/* 3-dots menu */}
+                  <button
+                    className="absolute top-4 right-4 text-gray-400 hover:text-gray-600 opacity-0 group-hover:opacity-100 transition-opacity"
+                    onClick={(e) => {
+                      e.preventDefault()
+                      e.stopPropagation()
+                    }}
+                  >
+                    <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
+                      <path d="M10 6a2 2 0 110-4 2 2 0 010 4zM10 12a2 2 0 110-4 2 2 0 010 4zM10 18a2 2 0 110-4 2 2 0 010 4z" />
+                    </svg>
+                  </button>
+
+                  {/* Vertical Centered Layout */}
+                  <div className="flex flex-col items-center text-center">
+                    {/* Large Avatar */}
+                    <div className="relative mb-4">
+                      <div className={`w-28 h-28 rounded-full flex items-center justify-center text-white font-bold text-4xl shadow-lg ${
                         rep.qualification_status === 'qualified'
                           ? 'bg-gradient-to-br from-emerald-400 to-emerald-600'
                           : 'bg-gradient-to-br from-indigo-400 to-indigo-600'
                       }`}>
                         {rep.name.split(' ').map(n => n[0]).join('').toUpperCase()}
                       </div>
-                      <div className={`absolute -bottom-0.5 -right-0.5 w-4 h-4 rounded-full border-2 border-white flex items-center justify-center ${
-                        rep.qualification_status === 'qualified' ? 'bg-emerald-500' : 'bg-amber-500'
-                      }`}>
-                        <span className="text-white text-[10px] font-bold">
-                          {rep.qualification_status === 'qualified' ? '✓' : '!'}
-                        </span>
+                    </div>
+
+                    {/* Name */}
+                    <h3 className="text-xl font-semibold text-gray-900 mb-1 group-hover:text-indigo-600 transition-colors">
+                      {rep.name}
+                    </h3>
+
+                    {/* Email */}
+                    <p className="text-sm text-gray-500 mb-4 truncate max-w-full px-2">
+                      {rep.email}
+                    </p>
+
+                    {/* Progress Bar - Score Indicator */}
+                    <div className="w-full mb-4">
+                      <div className="flex items-center gap-2 mb-2">
+                        <div className="flex-1 h-2 bg-gray-100 rounded-full overflow-hidden">
+                          <div className="flex h-full">
+                            {/* Calls Progress - Blue */}
+                            <div
+                              className="bg-indigo-500 transition-all"
+                              style={{ width: `${Math.min((rep.totalCalls / 20) * 40, 40)}%` }}
+                            ></div>
+                            {/* Score Progress - Purple/Amber based on score */}
+                            <div
+                              className={`transition-all ${rep.averageScore >= 70 ? 'bg-purple-500' : 'bg-amber-500'}`}
+                              style={{ width: `${Math.min((rep.averageScore / 100) * 35, 35)}%` }}
+                            ></div>
+                            {/* Qualification Status - Green/Red */}
+                            <div
+                              className={`transition-all ${
+                                rep.qualification_status === 'qualified' ? 'bg-emerald-500' : 'bg-rose-500'
+                              }`}
+                              style={{ width: '25%' }}
+                            ></div>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Legend */}
+                      <div className="flex items-center justify-center gap-3 text-xs text-gray-600">
+                        <div className="flex items-center gap-1">
+                          <div className="w-2 h-2 rounded-full bg-indigo-500"></div>
+                          <span className="font-medium">{rep.totalCalls}</span>
+                          <span className="text-gray-500">calls</span>
+                        </div>
+                        <div className="flex items-center gap-1">
+                          <div className={`w-2 h-2 rounded-full ${rep.averageScore >= 70 ? 'bg-purple-500' : 'bg-amber-500'}`}></div>
+                          <span className="font-medium">{rep.averageScore || 0}</span>
+                          <span className="text-gray-500">score</span>
+                        </div>
+                        <div className="flex items-center gap-1.5">
+                          {rep.qualification_status === 'qualified' ? (
+                            <>
+                              <div className="w-3 h-3 rounded-full bg-emerald-500 flex items-center justify-center">
+                                <svg className="w-2 h-2 text-white" fill="currentColor" viewBox="0 0 20 20">
+                                  <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                                </svg>
+                              </div>
+                              <span className="text-emerald-600 font-semibold text-[11px]">Q</span>
+                            </>
+                          ) : (
+                            <>
+                              <div className="w-3 h-3 rounded-full bg-rose-500 flex items-center justify-center">
+                                <svg className="w-2 h-2 text-white" fill="currentColor" viewBox="0 0 20 20">
+                                  <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
+                                </svg>
+                              </div>
+                              <span className="text-rose-600 font-semibold text-[11px]">NQ</span>
+                            </>
+                          )}
+                        </div>
                       </div>
                     </div>
 
-                    {/* Content */}
-                    <div className="flex-1 min-w-0">
-                      {/* Name & Status */}
-                      <div className="flex items-center gap-2 mb-1">
-                        <h3 className="text-base font-semibold text-gray-900 group-hover:text-indigo-600 transition-colors truncate">
-                          {rep.name}
-                        </h3>
-                        <span className={`flex-shrink-0 inline-flex items-center px-2 py-0.5 text-[10px] font-semibold rounded-full ${
-                          rep.qualification_status === 'qualified'
-                            ? 'bg-emerald-100 text-emerald-700'
-                            : 'bg-amber-100 text-amber-700'
-                        }`}>
-                          {rep.qualification_status === 'qualified' ? 'Qualified' : 'Unqualified'}
-                        </span>
-                      </div>
-
-                      {/* Stats */}
-                      <div className="flex items-center gap-4">
-                        <div className="flex items-center gap-1.5">
-                          <span className="text-xs text-gray-500">Totaal:</span>
-                          <span className="text-sm font-semibold text-gray-900">{rep.totalCalls}</span>
-                        </div>
-                        <div className="flex items-center gap-1.5">
-                          <span className="text-xs text-gray-500">Week:</span>
-                          <span className="text-sm font-semibold text-indigo-600">{rep.recentCallsCount}</span>
-                        </div>
-                        <div className="flex items-center gap-1.5">
-                          <span className="text-xs text-gray-500">Score:</span>
-                          <span className={`text-sm font-semibold ${
-                            rep.averageScore >= 70 ? 'text-emerald-600' : rep.averageScore > 0 ? 'text-amber-600' : 'text-gray-400'
-                          }`}>
-                            {rep.averageScore || '-'}
-                          </span>
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Arrow */}
-                    <div className="flex-shrink-0">
-                      <ChevronRight className="w-5 h-5 text-gray-400 group-hover:text-indigo-600 transition-colors" />
+                    {/* Role/Status */}
+                    <div className={`text-xs font-semibold tracking-wider uppercase ${
+                      rep.qualification_status === 'qualified'
+                        ? 'text-emerald-600'
+                        : 'text-gray-600'
+                    }`}>
+                      {rep.qualification_status === 'qualified' ? 'QUALIFIED' : 'SALES REP'}
                     </div>
                   </div>
                 </div>
