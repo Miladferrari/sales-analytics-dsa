@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation'
 import DashboardLayout from '@/components/DashboardLayout'
 import { getUser } from '@/lib/supabase/auth'
 import { supabase } from '@/lib/supabase/client'
-import { RefreshCw, Clock, CheckCircle, XCircle, AlertCircle, Loader2, Users, Mail, UserPlus, Trash2, User, Eye, EyeOff, Save, HelpCircle } from 'lucide-react'
+import { RefreshCw, Clock, CheckCircle, XCircle, AlertCircle, Loader2, Users, Mail, UserPlus, Trash2, User, Eye, EyeOff, Save, HelpCircle, Plug2 } from 'lucide-react'
 
 interface SyncResult {
   success: boolean
@@ -44,7 +44,7 @@ export default function SettingsPage() {
   const [lastSyncTime, setLastSyncTime] = useState<string | null>(null)
 
   // Settings Navigation State
-  const [activeTab, setActiveTab] = useState<'sync' | 'users' | 'faq'>('sync')
+  const [activeTab, setActiveTab] = useState<'sync' | 'users' | 'connection' | 'faq'>('sync')
 
   // User Management State
   const [users, setUsers] = useState<CRMUser[]>([])
@@ -76,6 +76,17 @@ export default function SettingsPage() {
   // Toast Notifications State
   const [toasts, setToasts] = useState<Toast[]>([])
 
+  // Fathom Configuration State
+  const [fathomConfig, setFathomConfig] = useState<any>(null)
+  const [loadingFathomConfig, setLoadingFathomConfig] = useState(false)
+  const [fathomApiKey, setFathomApiKey] = useState('')
+  const [fathomWebhookSecret, setFathomWebhookSecret] = useState('')
+  const [showFathomApiKey, setShowFathomApiKey] = useState(false)
+  const [showFathomWebhookSecret, setShowFathomWebhookSecret] = useState(false)
+  const [testingConnection, setTestingConnection] = useState(false)
+  const [savingFathomConfig, setSavingFathomConfig] = useState(false)
+  const [fathomTestResult, setFathomTestResult] = useState<{ success: boolean; message: string } | null>(null)
+
   function showToast(type: 'success' | 'error' | 'info', message: string) {
     const id = Date.now()
     setToasts(prev => [...prev, { id, type, message }])
@@ -92,6 +103,13 @@ export default function SettingsPage() {
     loadUsers()
     loadSyncPreference()
   }, [])
+
+  // Load Fathom config when connection tab is active
+  useEffect(() => {
+    if (activeTab === 'connection') {
+      loadFathomConfig()
+    }
+  }, [activeTab])
 
   function loadSyncPreference() {
     const savedPreference = localStorage.getItem('fathomSyncPeriod')
@@ -418,6 +436,143 @@ export default function SettingsPage() {
     }
   }
 
+  async function loadFathomConfig() {
+    setLoadingFathomConfig(true)
+    try {
+      // Get session token for authentication
+      const { data: { session } } = await supabase.auth.getSession()
+
+      if (!session) {
+        showToast('error', 'Geen geldige sessie. Log opnieuw in.')
+        setLoadingFathomConfig(false)
+        return
+      }
+
+      const response = await fetch('/api/settings/fathom', {
+        headers: {
+          'Authorization': `Bearer ${session.access_token}`
+        }
+      })
+      const data = await response.json()
+
+      if (response.ok) {
+        setFathomConfig(data)
+        // Set form values (use full values for editing)
+        setFathomApiKey(data.apiKeyFull || '')
+        setFathomWebhookSecret(data.webhookSecretFull || '')
+      } else {
+        showToast('error', 'Kon configuratie niet laden')
+      }
+    } catch (error) {
+      console.error('Error loading Fathom config:', error)
+      showToast('error', 'Fout bij laden configuratie')
+    } finally {
+      setLoadingFathomConfig(false)
+    }
+  }
+
+  async function handleTestFathomConnection() {
+    if (!fathomApiKey.trim()) {
+      showToast('error', 'Vul eerst een API Key in')
+      return
+    }
+
+    setTestingConnection(true)
+    setFathomTestResult(null)
+
+    try {
+      // Get session token for authentication
+      const { data: { session } } = await supabase.auth.getSession()
+
+      if (!session) {
+        showToast('error', 'Geen geldige sessie. Log opnieuw in.')
+        setTestingConnection(false)
+        return
+      }
+
+      const response = await fetch('/api/settings/fathom/test', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${session.access_token}`
+        },
+        body: JSON.stringify({ apiKey: fathomApiKey })
+      })
+
+      const data = await response.json()
+
+      if (data.success) {
+        setFathomTestResult({
+          success: true,
+          message: `${data.message} Team: ${data.teamName}`
+        })
+        showToast('success', 'Verbinding succesvol getest!')
+      } else {
+        setFathomTestResult({
+          success: false,
+          message: data.message || data.error || 'Verbinding mislukt'
+        })
+        showToast('error', 'Verbinding mislukt')
+      }
+    } catch (error) {
+      console.error('Error testing connection:', error)
+      setFathomTestResult({
+        success: false,
+        message: 'Netwerk fout bij testen verbinding'
+      })
+      showToast('error', 'Fout bij testen verbinding')
+    } finally {
+      setTestingConnection(false)
+    }
+  }
+
+  async function handleSaveFathomConfig() {
+    if (!fathomApiKey.trim()) {
+      showToast('error', 'API Key is verplicht')
+      return
+    }
+
+    setSavingFathomConfig(true)
+
+    try {
+      // Get session token for authentication
+      const { data: { session } } = await supabase.auth.getSession()
+
+      if (!session) {
+        showToast('error', 'Geen geldige sessie. Log opnieuw in.')
+        setSavingFathomConfig(false)
+        return
+      }
+
+      const response = await fetch('/api/settings/fathom', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${session.access_token}`
+        },
+        body: JSON.stringify({
+          apiKey: fathomApiKey.trim(),
+          webhookSecret: fathomWebhookSecret.trim() || null
+        })
+      })
+
+      const data = await response.json()
+
+      if (data.success) {
+        showToast('success', 'Configuratie opgeslagen!')
+        // Reload config to show updated masked values
+        await loadFathomConfig()
+      } else {
+        showToast('error', data.message || 'Opslaan mislukt')
+      }
+    } catch (error) {
+      console.error('Error saving config:', error)
+      showToast('error', 'Fout bij opslaan configuratie')
+    } finally {
+      setSavingFathomConfig(false)
+    }
+  }
+
   function formatDate(dateString: string) {
     const date = new Date(dateString)
     const now = new Date()
@@ -456,6 +611,7 @@ export default function SettingsPage() {
   const settingsMenu = [
     { id: 'sync' as const, label: 'Fathom Sync', icon: RefreshCw, color: 'indigo' },
     { id: 'users' as const, label: 'Gebruikersbeheer', icon: Users, color: 'green' },
+    { id: 'connection' as const, label: 'Fathom Koppeling', icon: Plug2, color: 'purple' },
     { id: 'faq' as const, label: 'FAQ', icon: HelpCircle, color: 'blue' },
   ]
 
@@ -486,12 +642,16 @@ export default function SettingsPage() {
                         ? 'bg-indigo-50 text-indigo-700 border border-indigo-200'
                         : item.id === 'users'
                         ? 'bg-green-50 text-green-700 border border-green-200'
+                        : item.id === 'connection'
+                        ? 'bg-purple-50 text-purple-700 border border-purple-200'
                         : 'bg-blue-50 text-blue-700 border border-blue-200'
 
                       const iconColor = item.id === 'sync'
                         ? 'text-indigo-600'
                         : item.id === 'users'
                         ? 'text-green-600'
+                        : item.id === 'connection'
+                        ? 'text-purple-600'
                         : 'text-blue-600'
 
                       return (
@@ -828,11 +988,11 @@ export default function SettingsPage() {
                           </button>
                           <button
                             onClick={() => setShowAddUserModal(true)}
-                            className="flex items-center justify-center gap-1.5 px-2.5 sm:px-3 lg:px-4 py-2 bg-green-600 text-white text-xs sm:text-sm font-medium rounded-lg hover:bg-green-700 transition-colors whitespace-nowrap"
+                            className="flex items-center justify-center gap-1.5 px-3 sm:px-3 lg:px-4 py-2.5 sm:py-2 bg-green-600 text-white text-sm sm:text-sm font-medium rounded-lg hover:bg-green-700 transition-colors whitespace-nowrap shadow-md hover:shadow-lg"
                           >
-                            <UserPlus className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
-                            <span className="hidden md:inline">Gebruiker Toevoegen</span>
-                            <span className="md:hidden">+</span>
+                            <UserPlus className="w-5 h-5 sm:w-4 sm:h-4" />
+                            <span className="hidden sm:inline">Gebruiker Toevoegen</span>
+                            <span className="sm:hidden">Toevoegen</span>
                           </button>
                         </div>
                       </div>
@@ -971,6 +1131,204 @@ export default function SettingsPage() {
                   </div>
                 )}
 
+                {/* Fathom Connection Content */}
+                {activeTab === 'connection' && (
+                  <div>
+                    <div className="border-b border-gray-200 bg-gradient-to-r from-purple-50 to-pink-50 px-4 sm:px-5 lg:px-6 py-3 sm:py-4">
+                      <div className="flex items-center gap-2 sm:gap-3">
+                        <div className="w-8 h-8 sm:w-10 sm:h-10 bg-purple-600 rounded-lg flex items-center justify-center flex-shrink-0">
+                          <Plug2 className="w-4 h-4 sm:w-5 sm:h-5 text-white" />
+                        </div>
+                        <div className="min-w-0">
+                          <h2 className="text-sm sm:text-base lg:text-lg font-semibold text-gray-900">Fathom Koppeling</h2>
+                          <p className="text-xs sm:text-sm text-gray-600 truncate">Configureer je Fathom API verbinding</p>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="p-4 sm:p-5 lg:p-6">
+                      {/* Loading State */}
+                      {loadingFathomConfig ? (
+                        <div className="text-center py-12">
+                          <Loader2 className="w-12 h-12 text-purple-600 animate-spin mx-auto mb-3" />
+                          <p className="text-sm text-gray-600 font-medium">Configuratie laden...</p>
+                        </div>
+                      ) : (
+                        <>
+                          {/* Connection Status */}
+                          {fathomConfig?.connectionStatus && (
+                            <div className={`mb-6 p-3 sm:p-4 rounded-lg border ${
+                              fathomConfig.connectionStatus === 'connected'
+                                ? 'bg-green-50 border-green-200'
+                                : fathomConfig.connectionStatus === 'error'
+                                ? 'bg-red-50 border-red-200'
+                                : 'bg-gray-50 border-gray-200'
+                            }`}>
+                              <div className="flex items-center gap-2">
+                                {fathomConfig.connectionStatus === 'connected' ? (
+                                  <>
+                                    <CheckCircle className="w-4 h-4 text-green-600" />
+                                    <span className="text-sm font-medium text-green-900">Verbonden</span>
+                                  </>
+                                ) : fathomConfig.connectionStatus === 'error' ? (
+                                  <>
+                                    <XCircle className="w-4 h-4 text-red-600" />
+                                    <span className="text-sm font-medium text-red-900">Verbinding mislukt</span>
+                                  </>
+                                ) : (
+                                  <>
+                                    <AlertCircle className="w-4 h-4 text-gray-600" />
+                                    <span className="text-sm font-medium text-gray-900">Nog niet geconfigureerd</span>
+                                  </>
+                                )}
+                                {fathomConfig.lastTested && (
+                                  <span className="text-xs text-gray-600 ml-auto">
+                                    {formatDate(fathomConfig.lastTested)}
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                          )}
+
+                          {/* API Key Input */}
+                          <div className="mb-4">
+                            <label className="block text-sm font-medium text-gray-700 mb-2">
+                              API Key <span className="text-red-500">*</span>
+                            </label>
+                            <div className="relative">
+                              <input
+                                type={showFathomApiKey ? "text" : "password"}
+                                value={fathomApiKey}
+                                onChange={(e) => setFathomApiKey(e.target.value)}
+                                placeholder="Plak je Fathom API key hier..."
+                                className="w-full px-4 py-2.5 pr-10 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent outline-none text-sm"
+                              />
+                              <button
+                                type="button"
+                                onClick={() => setShowFathomApiKey(!showFathomApiKey)}
+                                className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 transition-colors"
+                              >
+                                {showFathomApiKey ? (
+                                  <EyeOff className="w-5 h-5" />
+                                ) : (
+                                  <Eye className="w-5 h-5" />
+                                )}
+                              </button>
+                            </div>
+                          </div>
+
+                          {/* Webhook Secret Input */}
+                          <div className="mb-6">
+                            <label className="block text-sm font-medium text-gray-700 mb-2">
+                              Webhook Secret <span className="text-gray-400 text-xs">(Optioneel)</span>
+                            </label>
+                            <div className="relative">
+                              <input
+                                type={showFathomWebhookSecret ? "text" : "password"}
+                                value={fathomWebhookSecret}
+                                onChange={(e) => setFathomWebhookSecret(e.target.value)}
+                                placeholder="Optioneel..."
+                                className="w-full px-4 py-2.5 pr-10 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent outline-none text-sm"
+                              />
+                              <button
+                                type="button"
+                                onClick={() => setShowFathomWebhookSecret(!showFathomWebhookSecret)}
+                                className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 transition-colors"
+                              >
+                                {showFathomWebhookSecret ? (
+                                  <EyeOff className="w-5 h-5" />
+                                ) : (
+                                  <Eye className="w-5 h-5" />
+                                )}
+                              </button>
+                            </div>
+                          </div>
+
+                          {/* Test Result */}
+                          {fathomTestResult && (
+                            <div className={`mb-6 p-4 rounded-lg border ${
+                              fathomTestResult.success
+                                ? 'bg-green-50 border-green-200'
+                                : 'bg-red-50 border-red-200'
+                            }`}>
+                              <div className="flex items-start gap-3">
+                                {fathomTestResult.success ? (
+                                  <CheckCircle className="w-5 h-5 text-green-600 flex-shrink-0" />
+                                ) : (
+                                  <XCircle className="w-5 h-5 text-red-600 flex-shrink-0" />
+                                )}
+                                <div>
+                                  <p className={`text-sm font-medium ${
+                                    fathomTestResult.success ? 'text-green-900' : 'text-red-900'
+                                  }`}>
+                                    {fathomTestResult.success ? 'Test Succesvol!' : 'Test Mislukt'}
+                                  </p>
+                                  <p className="text-xs text-gray-700 mt-1">
+                                    {fathomTestResult.message}
+                                  </p>
+                                </div>
+                              </div>
+                            </div>
+                          )}
+
+                          {/* Action Buttons */}
+                          <div className="flex flex-col sm:flex-row gap-3">
+                            <button
+                              onClick={handleTestFathomConnection}
+                              disabled={testingConnection || !fathomApiKey.trim()}
+                              className="flex items-center justify-center gap-2 px-4 py-2.5 bg-purple-100 text-purple-700 text-sm font-medium rounded-lg hover:bg-purple-200 transition-colors disabled:opacity-50 disabled:cursor-not-allowed border border-purple-300"
+                            >
+                              {testingConnection ? (
+                                <>
+                                  <Loader2 className="w-4 h-4 animate-spin" />
+                                  <span>Testen...</span>
+                                </>
+                              ) : (
+                                <>
+                                  <Plug2 className="w-4 h-4" />
+                                  <span>Test Verbinding</span>
+                                </>
+                              )}
+                            </button>
+
+                            <button
+                              onClick={handleSaveFathomConfig}
+                              disabled={savingFathomConfig || !fathomApiKey.trim()}
+                              className="flex items-center justify-center gap-2 px-4 py-2.5 bg-purple-600 text-white text-sm font-medium rounded-lg hover:bg-purple-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                            >
+                              {savingFathomConfig ? (
+                                <>
+                                  <Loader2 className="w-4 h-4 animate-spin" />
+                                  <span>Opslaan...</span>
+                                </>
+                              ) : (
+                                <>
+                                  <Save className="w-4 h-4" />
+                                  <span>Opslaan</span>
+                                </>
+                              )}
+                            </button>
+                          </div>
+
+                          {/* Help Link */}
+                          <div className="mt-6 pt-4 border-t border-gray-200">
+                            <button
+                              onClick={() => setActiveTab('faq')}
+                              className="text-xs text-gray-600 hover:text-purple-600 font-medium flex items-center gap-1.5 group transition-colors"
+                            >
+                              <HelpCircle className="w-4 h-4 group-hover:text-purple-600" />
+                              <span>Hulp nodig met je API key?</span>
+                              <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                              </svg>
+                            </button>
+                          </div>
+                        </>
+                      )}
+                    </div>
+                  </div>
+                )}
+
                 {/* FAQ Content */}
                 {activeTab === 'faq' && (
                   <div>
@@ -988,6 +1346,31 @@ export default function SettingsPage() {
 
                     <div className="p-4 sm:p-5 lg:p-6">
                       <div className="space-y-3 sm:space-y-4">
+                        {/* FAQ Item 0 - Fathom API Key */}
+                        <div className="bg-white border border-gray-200 rounded-lg p-4">
+                          <h3 className="font-semibold text-gray-900 mb-2 flex items-center gap-2">
+                            <span className="text-blue-600">Q:</span>
+                            Hoe krijg ik mijn Fathom API Key?
+                          </h3>
+                          <div className="text-sm text-gray-700 pl-6 space-y-2">
+                            <ol className="list-decimal list-inside space-y-1">
+                              <li>Log in op je Fathom account</li>
+                              <li>Ga naar Settings → Integrations → API</li>
+                              <li>Klik op "Generate API Key"</li>
+                              <li>Kopieer de key en plak in Settings → Fathom Koppeling</li>
+                              <li>Klik op "Test Verbinding" en daarna "Opslaan"</li>
+                            </ol>
+                            <a
+                              href="https://help.fathom.video"
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="inline-block text-xs text-blue-600 hover:text-blue-700 underline mt-2"
+                            >
+                              Meer info in Fathom Help Center →
+                            </a>
+                          </div>
+                        </div>
+
                         {/* FAQ Item 1 */}
                         <div className="bg-white border border-gray-200 rounded-lg p-3 sm:p-4">
                           <h3 className="text-sm sm:text-base font-semibold text-gray-900 mb-2 flex items-center gap-2">

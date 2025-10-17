@@ -10,8 +10,9 @@
 
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
-import { createFathomClient, FathomCall } from '@/lib/fathom/api-client'
+import { FathomCall } from '@/lib/fathom/api-client'
 import { matchSalesRep } from '@/lib/fathom/rep-matcher'
+import { createFathomClientFromDB } from '@/lib/config/system'
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!
@@ -49,7 +50,11 @@ export async function GET(request: NextRequest) {
 
   try {
     const supabase = createClient(supabaseUrl, supabaseServiceKey)
-    const fathomClient = createFathomClient()
+
+    // Create Fathom client using database configuration
+    console.log('🔑 Loading Fathom API config from database...')
+    const fathomClient = await createFathomClientFromDB()
+    console.log('✅ Fathom client initialized')
 
     // Check if a custom hours parameter is provided (for manual sync)
     const url = new URL(request.url)

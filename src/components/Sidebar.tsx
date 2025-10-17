@@ -13,13 +13,34 @@ export default function Sidebar() {
   const [isOpen, setIsOpen] = useState(false)
   const [profilePhoto, setProfilePhoto] = useState<string | null>(null)
   const [firstName, setFirstName] = useState('')
+  const [mounted, setMounted] = useState(false)
+
+  // Load from localStorage after mount to prevent hydration errors
+  useEffect(() => {
+    setMounted(true)
+    const cachedPhoto = localStorage.getItem('profilePhoto')
+    const cachedName = localStorage.getItem('firstName') || ''
+
+    if (cachedPhoto) setProfilePhoto(cachedPhoto)
+    if (cachedName) setFirstName(cachedName)
+  }, [])
 
   useEffect(() => {
-    loadProfile()
+    if (mounted) {
+      loadProfile()
+    }
 
     // Listen for profile photo updates
     const handleProfilePhotoUpdate = (event: any) => {
-      setProfilePhoto(event.detail.photoUrl)
+      const newPhotoUrl = event.detail.photoUrl
+      setProfilePhoto(newPhotoUrl)
+
+      // Update localStorage
+      if (newPhotoUrl) {
+        localStorage.setItem('profilePhoto', newPhotoUrl)
+      } else {
+        localStorage.removeItem('profilePhoto')
+      }
     }
 
     window.addEventListener('profilePhotoUpdated', handleProfilePhotoUpdate)
@@ -27,7 +48,7 @@ export default function Sidebar() {
     return () => {
       window.removeEventListener('profilePhotoUpdated', handleProfilePhotoUpdate)
     }
-  }, [])
+  }, [mounted])
 
   async function loadProfile() {
     try {
@@ -41,8 +62,21 @@ export default function Sidebar() {
         .single()
 
       if (profile) {
-        setProfilePhoto(profile.profile_photo_url || null)
-        setFirstName(profile.first_name || '')
+        const newPhotoUrl = profile.profile_photo_url || null
+        const newFirstName = profile.first_name || ''
+
+        setProfilePhoto(newPhotoUrl)
+        setFirstName(newFirstName)
+
+        // Cache in localStorage for instant load next time
+        if (newPhotoUrl) {
+          localStorage.setItem('profilePhoto', newPhotoUrl)
+        } else {
+          localStorage.removeItem('profilePhoto')
+        }
+        if (newFirstName) {
+          localStorage.setItem('firstName', newFirstName)
+        }
       }
     } catch (error) {
       console.error('Error loading profile:', error)

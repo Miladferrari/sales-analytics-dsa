@@ -26,6 +26,9 @@ export default function ProfilePage() {
   const [showConfirmPassword, setShowConfirmPassword] = useState(false)
   const [isDragging, setIsDragging] = useState(false)
 
+  // Tab Navigation State
+  const [activeTab, setActiveTab] = useState<'photo' | 'personal' | 'security'>('photo')
+
   useEffect(() => {
     loadUser()
   }, [])
@@ -298,31 +301,96 @@ export default function ProfilePage() {
 
   return (
     <DashboardLayout>
-      <div className="p-4 sm:p-6 lg:p-8">
-        {/* Header */}
-        <div className="mb-6 sm:mb-8">
-          <h1 className="text-xl sm:text-2xl font-semibold text-gray-900 mb-1">Profiel Instellingen</h1>
-          <p className="text-xs sm:text-sm text-gray-500">Beheer je account instellingen en voorkeuren</p>
-        </div>
-
-        {/* Message */}
-        {message && (
-          <div className={`mb-6 p-4 rounded-lg border ${
-            message.type === 'success'
-              ? 'bg-green-50 border-green-200 text-green-800'
-              : 'bg-red-50 border-red-200 text-red-800'
-          }`}>
-            <p className="text-sm">{message.text}</p>
+      <div className="flex flex-col lg:flex-row gap-6 p-4 sm:p-6">
+        {/* Main Content */}
+        <div className="flex-1 min-w-0">
+          {/* Header */}
+          <div className="mb-4 sm:mb-6 lg:mb-8">
+            <h1 className="text-lg sm:text-xl lg:text-2xl font-semibold text-gray-900 mb-1">Profiel Instellingen</h1>
+            <p className="text-xs sm:text-sm text-gray-500">Beheer je account instellingen en voorkeuren</p>
           </div>
-        )}
 
-        {/* 2-Column Grid Layout for Desktop */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          {/* Left Column */}
-          <div className="space-y-6">
-            {/* Profile Photo Section */}
-            <div className="bg-white rounded-lg border border-gray-200 p-6">
-              <h2 className="text-base font-semibold text-gray-900 mb-4">Profielfoto</h2>
+          {/* Message */}
+          {message && (
+            <div className={`mb-6 p-4 rounded-lg border ${
+              message.type === 'success'
+                ? 'bg-green-50 border-green-200 text-green-800'
+                : 'bg-red-50 border-red-200 text-red-800'
+            }`}>
+              <p className="text-sm">{message.text}</p>
+            </div>
+          )}
+
+          {/* Settings Container with Sidebar */}
+          <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
+            <div className="flex flex-col lg:flex-row">
+              {/* Left Sidebar Navigation */}
+              <div className="lg:w-64 border-b lg:border-b-0 lg:border-r border-gray-200 bg-gray-50">
+                <div className="p-3 sm:p-4">
+                  <nav className="flex lg:flex-col gap-2 lg:space-y-1 overflow-x-auto lg:overflow-x-visible">
+                    {/* Profielfoto Tab */}
+                    <button
+                      onClick={() => setActiveTab('photo')}
+                      className={`flex items-center justify-center lg:justify-start gap-2 lg:gap-3 px-3 lg:px-4 py-2.5 lg:py-3 rounded-lg text-xs sm:text-sm font-medium transition-all whitespace-nowrap lg:w-full ${
+                        activeTab === 'photo'
+                          ? 'bg-indigo-50 text-indigo-700 border border-indigo-200'
+                          : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'
+                      }`}
+                    >
+                      <Camera className={`w-4 h-4 lg:w-5 lg:h-5 flex-shrink-0 ${activeTab === 'photo' ? 'text-indigo-600' : 'text-gray-400'}`} />
+                      <span className="hidden sm:inline">Profielfoto</span>
+                    </button>
+
+                    {/* Persoonlijke Info Tab */}
+                    <button
+                      onClick={() => setActiveTab('personal')}
+                      className={`flex items-center justify-center lg:justify-start gap-2 lg:gap-3 px-3 lg:px-4 py-2.5 lg:py-3 rounded-lg text-xs sm:text-sm font-medium transition-all whitespace-nowrap lg:w-full ${
+                        activeTab === 'personal'
+                          ? 'bg-indigo-50 text-indigo-700 border border-indigo-200'
+                          : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'
+                      }`}
+                    >
+                      <UserIcon className={`w-4 h-4 lg:w-5 lg:h-5 flex-shrink-0 ${activeTab === 'personal' ? 'text-indigo-600' : 'text-gray-400'}`} />
+                      <span className="hidden sm:inline">Persoonlijke Info</span>
+                    </button>
+
+                    {/* Beveiliging Tab */}
+                    <button
+                      onClick={() => setActiveTab('security')}
+                      className={`flex items-center justify-center lg:justify-start gap-2 lg:gap-3 px-3 lg:px-4 py-2.5 lg:py-3 rounded-lg text-xs sm:text-sm font-medium transition-all whitespace-nowrap lg:w-full ${
+                        activeTab === 'security'
+                          ? 'bg-indigo-50 text-indigo-700 border border-indigo-200'
+                          : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'
+                      }`}
+                    >
+                      <Lock className={`w-4 h-4 lg:w-5 lg:h-5 flex-shrink-0 ${activeTab === 'security' ? 'text-indigo-600' : 'text-gray-400'}`} />
+                      <span className="hidden sm:inline">Beveiliging</span>
+                    </button>
+                  </nav>
+                </div>
+              </div>
+
+              {/* Right Content Area */}
+              <div className="flex-1 min-w-0">
+
+                {/* PROFIELFOTO TAB */}
+                {activeTab === 'photo' && (
+                  <div>
+                    {/* Gradient Header */}
+                    <div className="border-b border-gray-200 bg-gradient-to-r from-indigo-50 to-purple-50 px-4 sm:px-5 lg:px-6 py-3 sm:py-4">
+                      <div className="flex items-center gap-2 sm:gap-3">
+                        <div className="w-8 h-8 sm:w-10 sm:h-10 bg-indigo-600 rounded-lg flex items-center justify-center flex-shrink-0">
+                          <Camera className="w-4 h-4 sm:w-5 sm:h-5 text-white" />
+                        </div>
+                        <div className="min-w-0">
+                          <h2 className="text-sm sm:text-base lg:text-lg font-semibold text-gray-900">Profielfoto</h2>
+                          <p className="text-xs sm:text-sm text-gray-600 truncate">Upload of wijzig je profielfoto</p>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Content */}
+                    <div className="p-4 sm:p-5 lg:p-6">
 
               {/* Drag & Drop Area */}
               <div
@@ -383,12 +451,28 @@ export default function ProfilePage() {
                   )}
                 </div>
               </div>
-            </div>
+                    </div>
+                  </div>
+                )}
 
-            {/* Personal Information */}
-            <div className="bg-white rounded-lg border border-gray-200 p-6">
-              <h2 className="text-base font-semibold text-gray-900 mb-4">Persoonlijke Informatie</h2>
+                {/* PERSOONLIJKE INFO TAB */}
+                {activeTab === 'personal' && (
+                  <div>
+                    {/* Gradient Header */}
+                    <div className="border-b border-gray-200 bg-gradient-to-r from-indigo-50 to-purple-50 px-4 sm:px-5 lg:px-6 py-3 sm:py-4">
+                      <div className="flex items-center gap-2 sm:gap-3">
+                        <div className="w-8 h-8 sm:w-10 sm:h-10 bg-indigo-600 rounded-lg flex items-center justify-center flex-shrink-0">
+                          <UserIcon className="w-4 h-4 sm:w-5 sm:h-5 text-white" />
+                        </div>
+                        <div className="min-w-0">
+                          <h2 className="text-sm sm:text-base lg:text-lg font-semibold text-gray-900">Persoonlijke Informatie</h2>
+                          <p className="text-xs sm:text-sm text-gray-600 truncate">Beheer je voor- en achternaam</p>
+                        </div>
+                      </div>
+                    </div>
 
+                    {/* Content */}
+                    <div className="p-4 sm:p-5 lg:p-6">
               <div className="space-y-4 mb-4">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">
@@ -426,13 +510,31 @@ export default function ProfilePage() {
                 {saving ? 'Opslaan...' : 'Wijzigingen Opslaan'}
               </button>
             </div>
-          </div>
+                    </div>
+                )}
 
-          {/* Right Column */}
-          <div className="space-y-6">
-            {/* Email Section */}
-            <div className="bg-white rounded-lg border border-gray-200 p-6">
-              <h2 className="text-base font-semibold text-gray-900 mb-4">Email Adres</h2>
+                {/* BEVEILIGING TAB */}
+                {activeTab === 'security' && (
+                  <div>
+                    {/* Gradient Header */}
+                    <div className="border-b border-gray-200 bg-gradient-to-r from-indigo-50 to-purple-50 px-4 sm:px-5 lg:px-6 py-3 sm:py-4">
+                      <div className="flex items-center gap-2 sm:gap-3">
+                        <div className="w-8 h-8 sm:w-10 sm:h-10 bg-indigo-600 rounded-lg flex items-center justify-center flex-shrink-0">
+                          <Lock className="w-4 h-4 sm:w-5 sm:h-5 text-white" />
+                        </div>
+                        <div className="min-w-0">
+                          <h2 className="text-sm sm:text-base lg:text-lg font-semibold text-gray-900">Beveiliging</h2>
+                          <p className="text-xs sm:text-sm text-gray-600 truncate">Wijzig je email en wachtwoord</p>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Content */}
+                    <div className="p-4 sm:p-5 lg:p-6">
+                      <div className="space-y-6">
+                        {/* Email Section */}
+                        <div>
+                          <h3 className="text-sm font-semibold text-gray-900 mb-3">Email Adres</h3>
 
               <div className="mb-4">
                 <label className="block text-sm font-medium text-gray-700 mb-2">
@@ -461,11 +563,11 @@ export default function ProfilePage() {
                 <Save className="w-4 h-4" />
                 {saving ? 'Opslaan...' : 'Email Bijwerken'}
               </button>
-            </div>
+                        </div>
 
-            {/* Password Section */}
-            <div className="bg-white rounded-lg border border-gray-200 p-6">
-              <h2 className="text-base font-semibold text-gray-900 mb-4">Wachtwoord Wijzigen</h2>
+                        {/* Password Section */}
+                        <div className="pt-6 border-t border-gray-200">
+                          <h3 className="text-sm font-semibold text-gray-900 mb-3">Wachtwoord Wijzigen</h3>
 
               <div className="space-y-4 mb-4">
                 <div>
@@ -523,6 +625,13 @@ export default function ProfilePage() {
                 <Save className="w-4 h-4" />
                 {saving ? 'Opslaan...' : 'Wachtwoord Wijzigen'}
               </button>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+              </div>
             </div>
           </div>
         </div>
