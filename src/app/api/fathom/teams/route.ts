@@ -1,11 +1,12 @@
 /**
  * API endpoint to get all Fathom organization teams
  * This fetches the official teams from the Fathom organization
+ * Uses database-based Fathom configuration
  */
 
 import { NextResponse } from 'next/server'
-
-const FATHOM_API_KEY = process.env.FATHOM_API_KEY!
+import { getFathomConfig } from '@/lib/config/system'
+import { fetchWithRetry } from '@/lib/fathom/retry-helper'
 
 // Disable caching - always fetch fresh data
 export const dynamic = 'force-dynamic'
@@ -13,11 +14,29 @@ export const revalidate = 0
 
 export async function GET() {
   try {
-    // Fetch teams from Fathom organization
-    const response = await fetch('https://api.fathom.ai/external/v1/teams', {
+    // Get Fathom API key from database (with fallback to env)
+    const config = await getFathomConfig()
+
+    if (!config.apiKey) {
+      console.error('❌ No Fathom API key configured')
+      return NextResponse.json(
+        {
+          success: false,
+          error: 'Fathom API key not configured. Please configure in Settings.',
+          teams: []
+        },
+        { status: 500 }
+      )
+    }
+
+    // Fetch teams from Fathom organization using database config with retry logic
+    const response = await fetchWithRetry('https://api.fathom.ai/external/v1/teams', {
       headers: {
-        'X-Api-Key': FATHOM_API_KEY,
+        'X-Api-Key': config.apiKey,
       },
+    }, {
+      maxRetries: 2,
+      initialDelay: 1000
     })
 
     if (!response.ok) {

@@ -23,12 +23,12 @@ export async function GET(request: NextRequest) {
           overall_rating
         )
       `
-      )
+      ) as { data: any[] | null, error: any }
 
     if (callsError) throw callsError
 
     const totalCalls = calls?.length || 0
-    const callsToday = calls?.filter((c) => c.date.startsWith(today)).length || 0
+    const callsToday = calls?.filter((c: any) => c.date.startsWith(today)).length || 0
 
     const analysisData = calls
       ?.map((c: any) => c.analysis?.[0])

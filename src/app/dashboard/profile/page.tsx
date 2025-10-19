@@ -40,11 +40,13 @@ export default function ProfilePage() {
       setEmail(currentUser?.email || '')
 
       // Load user profile from database
+      if (!currentUser?.id) return
+
       const { data: profile, error: profileError } = await supabase
         .from('user_profiles')
         .select('*')
-        .eq('id', currentUser?.id)
-        .single()
+        .eq('id', currentUser.id)
+        .single() as { data: any, error: any }
 
       if (profileError && profileError.code !== 'PGRST116') {
         // PGRST116 means no rows returned, which is fine for new users
@@ -59,7 +61,7 @@ export default function ProfilePage() {
         // Create profile if it doesn't exist
         const { error: insertError } = await supabase
           .from('user_profiles')
-          .insert([{ id: currentUser?.id, first_name: '', last_name: '' }])
+          .insert([{ id: currentUser.id, first_name: '', last_name: '' }] as any)
 
         if (insertError) {
           console.error('Error creating profile:', insertError)
@@ -120,8 +122,8 @@ export default function ProfilePage() {
         .getPublicUrl(fileName)
 
       // Update profile in database
-      const { error: updateError } = await supabase
-        .from('user_profiles')
+      const updateQuery: any = supabase.from('user_profiles')
+      const { error: updateError } = await updateQuery
         .update({ profile_photo_url: publicUrl })
         .eq('id', user.id)
 
@@ -186,8 +188,8 @@ export default function ProfilePage() {
       }
 
       // Update database
-      const { error: updateError } = await supabase
-        .from('user_profiles')
+      const deleteQuery: any = supabase.from('user_profiles')
+      const { error: updateError } = await deleteQuery
         .update({ profile_photo_url: null })
         .eq('id', user.id)
 
@@ -215,8 +217,8 @@ export default function ProfilePage() {
 
     try {
       // Update profile in database
-      const { error: updateError } = await supabase
-        .from('user_profiles')
+      const profileQuery: any = supabase.from('user_profiles')
+      const { error: updateError } = await profileQuery
         .update({
           first_name: firstName.trim(),
           last_name: lastName.trim(),

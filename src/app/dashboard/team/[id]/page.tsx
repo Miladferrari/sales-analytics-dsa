@@ -79,6 +79,24 @@ export default function TeamMemberPage() {
     loadRepData()
   }, [repId])
 
+  // Auto-refresh when calls are being analyzed
+  useEffect(() => {
+    // Check if any calls are in "analyzing" status
+    const hasAnalyzingCalls = calls.some(call => call.fathom_status === 'analyzing')
+
+    if (hasAnalyzingCalls) {
+      console.log('🔄 Calls being analyzed, setting up auto-refresh...')
+
+      // Refresh every 10 seconds when calls are analyzing
+      const interval = setInterval(() => {
+        console.log('🔄 Auto-refreshing call data...')
+        loadRepData()
+      }, 10000) // 10 seconds
+
+      return () => clearInterval(interval)
+    }
+  }, [calls])
+
   // Block background scroll when call details slide-over is open
   useEffect(() => {
     if (selectedCall) {
@@ -240,11 +258,10 @@ export default function TeamMemberPage() {
   async function handleRefreshCalls() {
     setRefreshing(true)
     try {
-      // Get saved sync preference from localStorage (default: 24 hours)
-      const savedPreference = localStorage.getItem('fathomSyncPeriod')
-      const hours = savedPreference ? parseInt(savedPreference) : 24
+      // Always use 24 hours for refresh button (hard-coded)
+      const hours = 24
 
-      // Step 1: Trigger Fathom sync with user preference
+      // Step 1: Trigger Fathom sync with 24 hours
       console.log(`🔄 Triggering Fathom sync (${hours}h)...`)
       const syncResponse = await fetch(`/api/cron/sync-fathom?hours=${hours}`, {
         method: 'POST'
@@ -254,7 +271,6 @@ export default function TeamMemberPage() {
 
       // Show success message with details
       if (syncResult.success) {
-        const periodLabel = hours === 24 ? '24 uur' : hours === 168 ? '7 dagen' : '30 dagen'
         showToast('success', `Sync voltooid! ${syncResult.imported} nieuwe gesprekken geïmporteerd, ${syncResult.skipped} geskipped`)
       }
 
@@ -907,7 +923,10 @@ export default function TeamMemberPage() {
                               </span>
                             )
                           ) : status === 'analyzing' || analyzingCallId === call.id ? (
-                            <span className="inline-flex items-center px-2.5 py-1 sm:px-3 sm:py-1.5 rounded-lg text-xs font-medium bg-blue-100 text-blue-700">
+                            <span
+                              className="inline-flex items-center px-2.5 py-1 sm:px-3 sm:py-1.5 rounded-lg text-xs font-medium bg-blue-100 text-blue-700"
+                              title="Wordt geanalyseerd door Frankie de Closer Bot (~45 sec)"
+                            >
                               <svg className="animate-spin -ml-0.5 mr-1.5 h-3 w-3" fill="none" viewBox="0 0 24 24">
                                 <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
                                 <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
@@ -916,7 +935,13 @@ export default function TeamMemberPage() {
                               <span className="sm:hidden">...</span>
                             </span>
                           ) : status === 'pending' ? (
-                            <span className="inline-flex items-center px-2.5 py-1 sm:px-3 sm:py-1.5 rounded-lg text-xs font-medium bg-gray-100 text-gray-600">
+                            <span
+                              className="inline-flex items-center px-2.5 py-1 sm:px-3 sm:py-1.5 rounded-lg text-xs font-medium bg-amber-100 text-amber-700 border border-amber-200"
+                              title="Wacht op analyse - wordt automatisch binnen 5 min verwerkt"
+                            >
+                              <svg className="w-3 h-3 mr-1.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                              </svg>
                               <span className="hidden sm:inline">In wachtrij</span>
                               <span className="sm:hidden">Wachtrij</span>
                             </span>
@@ -930,7 +955,13 @@ export default function TeamMemberPage() {
                               <span className="sm:hidden">Analyseer</span>
                             </button>
                           ) : (
-                            <span className="text-xs text-gray-400">
+                            <span
+                              className="inline-flex items-center gap-1.5 text-xs text-gray-400"
+                              title="Fathom genereert nog het transcript - probeer over 1-2 uur opnieuw te syncen"
+                            >
+                              <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                              </svg>
                               <span className="hidden sm:inline">Geen transcript</span>
                               <span className="sm:hidden">-</span>
                             </span>

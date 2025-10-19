@@ -47,10 +47,10 @@ export default function CallDetailPage() {
 
       if (data) {
         setCall({
-          ...data,
-          analysis: data.analysis[0],
-          sales_rep: data.sales_reps,
-        })
+          ...(data as any),
+          analysis: (data as any).analysis[0],
+          sales_rep: (data as any).sales_reps,
+        } as any)
       }
     } catch (error) {
       console.error('Error loading call details:', error)

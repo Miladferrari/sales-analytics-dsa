@@ -68,9 +68,7 @@ export default function SettingsPage() {
   // Resend Invitation State
   const [resending, setResending] = useState<string | null>(null) // stores user ID being processed
 
-  // Sync Voorkeur State
-  const [defaultSyncHours, setDefaultSyncHours] = useState<number>(24) // 24, 168 (7 days), or 720 (30 days)
-  const [savingSyncPreference, setSavingSyncPreference] = useState(false)
+  // Manual Sync State
   const [showManualSync, setShowManualSync] = useState(false) // Toggle for manual sync section
 
   // Toast Notifications State
@@ -101,7 +99,6 @@ export default function SettingsPage() {
     loadUser()
     loadLastSyncTime()
     loadUsers()
-    loadSyncPreference()
   }, [])
 
   // Load Fathom config when connection tab is active
@@ -110,27 +107,6 @@ export default function SettingsPage() {
       loadFathomConfig()
     }
   }, [activeTab])
-
-  function loadSyncPreference() {
-    const savedPreference = localStorage.getItem('fathomSyncPeriod')
-    if (savedPreference) {
-      setDefaultSyncHours(parseInt(savedPreference))
-    }
-  }
-
-  function saveSyncPreference() {
-    setSavingSyncPreference(true)
-    try {
-      localStorage.setItem('fathomSyncPeriod', defaultSyncHours.toString())
-      const label = defaultSyncHours === 24 ? '24 uur' : defaultSyncHours === 168 ? '7 dagen' : '30 dagen'
-      showToast('success', `Sync voorkeur opgeslagen: ${label}`)
-    } catch (error) {
-      console.error('Error saving sync preference:', error)
-      showToast('error', 'Fout bij opslaan voorkeur')
-    } finally {
-      setSavingSyncPreference(false)
-    }
-  }
 
   async function loadUser() {
     try {
@@ -692,95 +668,6 @@ export default function SettingsPage() {
                     </div>
 
                     <div className="p-4 sm:p-5 lg:p-6">
-              {/* Default Sync Periode Voorkeur */}
-              <div className="mb-6 p-4 bg-gradient-to-r from-blue-50 to-indigo-50 border border-indigo-200 rounded-lg">
-                <div className="flex items-start justify-between mb-3">
-                  <div>
-                    <h3 className="text-sm font-semibold text-gray-900 mb-1">Default Sync Periode</h3>
-                    <p className="text-xs text-gray-600">
-                      Deze instelling wordt gebruikt voor de "Ververs" knop op sales rep profielen
-                    </p>
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-3">
-                  <button
-                    onClick={() => setDefaultSyncHours(24)}
-                    className={`px-3 py-3 rounded-lg border-2 transition-all text-left ${
-                      defaultSyncHours === 24
-                        ? 'bg-indigo-100 border-indigo-400 text-indigo-900'
-                        : 'bg-white border-gray-200 text-gray-700 hover:border-gray-300'
-                    }`}
-                  >
-                    <div className="flex items-center gap-2 mb-1">
-                      {defaultSyncHours === 24 && (
-                        <svg className="w-4 h-4 text-indigo-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                        </svg>
-                      )}
-                      <span className="font-semibold text-sm">24 Uur</span>
-                    </div>
-                    <p className="text-xs text-gray-600">Dagelijks</p>
-                  </button>
-
-                  <button
-                    onClick={() => setDefaultSyncHours(168)}
-                    className={`px-3 py-3 rounded-lg border-2 transition-all text-left ${
-                      defaultSyncHours === 168
-                        ? 'bg-indigo-100 border-indigo-400 text-indigo-900'
-                        : 'bg-white border-gray-200 text-gray-700 hover:border-gray-300'
-                    }`}
-                  >
-                    <div className="flex items-center gap-2 mb-1">
-                      {defaultSyncHours === 168 && (
-                        <svg className="w-4 h-4 text-indigo-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                        </svg>
-                      )}
-                      <span className="font-semibold text-sm">7 Dagen</span>
-                    </div>
-                    <p className="text-xs text-gray-600">Wekelijks</p>
-                  </button>
-
-                  <button
-                    onClick={() => setDefaultSyncHours(720)}
-                    className={`px-3 py-3 rounded-lg border-2 transition-all text-left ${
-                      defaultSyncHours === 720
-                        ? 'bg-indigo-100 border-indigo-400 text-indigo-900'
-                        : 'bg-white border-gray-200 text-gray-700 hover:border-gray-300'
-                    }`}
-                  >
-                    <div className="flex items-center gap-2 mb-1">
-                      {defaultSyncHours === 720 && (
-                        <svg className="w-4 h-4 text-indigo-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                        </svg>
-                      )}
-                      <span className="font-semibold text-sm">30 Dagen</span>
-                    </div>
-                    <p className="text-xs text-gray-600">Maandelijks</p>
-                  </button>
-                </div>
-
-                <button
-                  onClick={saveSyncPreference}
-                  disabled={savingSyncPreference}
-                  className="w-full px-4 py-2 bg-indigo-600 text-white text-sm font-medium rounded-lg hover:bg-indigo-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
-                >
-                  {savingSyncPreference ? (
-                    <>
-                      <Loader2 className="w-4 h-4 animate-spin" />
-                      Opslaan...
-                    </>
-                  ) : (
-                    <>
-                      <Save className="w-4 h-4" />
-                      Voorkeur Opslaan
-                    </>
-                  )}
-                </button>
-              </div>
-
               {/* Last Sync Info */}
               {lastSyncTime && (
                 <div className="mb-5 sm:mb-6 flex items-center gap-2 text-xs sm:text-sm text-gray-600 bg-gray-50 rounded-lg p-3">
@@ -828,68 +715,32 @@ export default function SettingsPage() {
                       </p>
                     </div>
 
-              {/* Sync Buttons */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-                {/* Quick Sync - 24 hours */}
-                <button
-                  onClick={() => handleSync(24)}
-                  disabled={syncing}
-                  className="group relative p-4 sm:p-5 border-2 border-gray-200 rounded-lg hover:border-indigo-300 hover:bg-indigo-50 hover:shadow-md transition-all disabled:opacity-50 disabled:cursor-not-allowed text-left"
-                >
-                  <div className="flex items-start justify-between mb-3">
-                    <div className="w-10 h-10 bg-indigo-100 rounded-lg flex items-center justify-center group-hover:bg-indigo-200 transition-colors">
-                      <RefreshCw className={`w-5 h-5 text-indigo-600 ${syncing ? 'animate-spin' : ''}`} />
+              {/* Incremental Sync Reset Button */}
+              <button
+                onClick={() => handleSync(0)} // 0 = incremental sync from last_full_sync or created_at
+                disabled={syncing}
+                className="group relative w-full p-5 border-2 border-orange-300 bg-gradient-to-r from-orange-50 to-red-50 rounded-lg hover:border-orange-400 hover:shadow-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed text-left"
+              >
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-4">
+                    <div className="w-12 h-12 bg-orange-500 rounded-lg flex items-center justify-center group-hover:bg-orange-600 transition-colors shadow-md">
+                      <RefreshCw className={`w-6 h-6 text-white ${syncing ? 'animate-spin' : ''}`} />
                     </div>
-                    <span className="text-xs font-medium px-2 py-0.5 bg-indigo-100 text-indigo-700 rounded-full">
-                      24u
-                    </span>
-                  </div>
-                  <h3 className="text-sm sm:text-base font-semibold text-gray-900 mb-1">Quick Sync</h3>
-                  <p className="text-xs text-gray-600">
-                    Laatste 24 uur
-                  </p>
-                </button>
-
-                {/* Weekly Sync - 7 days */}
-                <button
-                  onClick={() => handleSync(168)}
-                  disabled={syncing}
-                  className="group relative p-4 sm:p-5 border-2 border-gray-200 rounded-lg hover:border-teal-300 hover:bg-teal-50 hover:shadow-md transition-all disabled:opacity-50 disabled:cursor-not-allowed text-left"
-                >
-                  <div className="flex items-start justify-between mb-3">
-                    <div className="w-10 h-10 bg-teal-100 rounded-lg flex items-center justify-center group-hover:bg-teal-200 transition-colors">
-                      <RefreshCw className={`w-5 h-5 text-teal-600 ${syncing ? 'animate-spin' : ''}`} />
+                    <div>
+                      <h3 className="text-base font-bold text-gray-900 mb-1">Incrementele Sync Reset</h3>
+                      <p className="text-sm text-gray-700">
+                        Sync alle sales reps vanaf hun laatste reset checkpoint
+                      </p>
+                      <p className="text-xs text-orange-700 mt-1">
+                        💡 Gebruik dit om missing calls op te vangen zonder dubbel werk
+                      </p>
                     </div>
-                    <span className="text-xs font-medium px-2 py-0.5 bg-teal-100 text-teal-700 rounded-full">
-                      7d
-                    </span>
                   </div>
-                  <h3 className="text-sm sm:text-base font-semibold text-gray-900 mb-1">Weekly Sync</h3>
-                  <p className="text-xs text-gray-600">
-                    Laatste 7 dagen
-                  </p>
-                </button>
-
-                {/* Full Resync - 30 days */}
-                <button
-                  onClick={() => handleSync(720)}
-                  disabled={syncing}
-                  className="group relative p-4 sm:p-5 border-2 border-gray-200 rounded-lg hover:border-purple-300 hover:bg-purple-50 hover:shadow-md transition-all disabled:opacity-50 disabled:cursor-not-allowed text-left"
-                >
-                  <div className="flex items-start justify-between mb-3">
-                    <div className="w-10 h-10 bg-purple-100 rounded-lg flex items-center justify-center group-hover:bg-purple-200 transition-colors">
-                      <RefreshCw className={`w-5 h-5 text-purple-600 ${syncing ? 'animate-spin' : ''}`} />
-                    </div>
-                    <span className="text-xs font-medium px-2 py-0.5 bg-purple-100 text-purple-700 rounded-full">
-                      30d
-                    </span>
-                  </div>
-                  <h3 className="text-sm sm:text-base font-semibold text-gray-900 mb-1">Full Resync</h3>
-                  <p className="text-xs text-gray-600">
-                    Laatste 30 dagen
-                  </p>
-                </button>
-              </div>
+                  <svg className="w-6 h-6 text-orange-600 group-hover:translate-x-1 transition-transform" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7l5 5m0 0l-5 5m5-5H6" />
+                  </svg>
+                </div>
+              </button>
 
               {/* Sync Status */}
               {syncing && (
@@ -1356,9 +1207,9 @@ export default function SettingsPage() {
                             <ol className="list-decimal list-inside space-y-1">
                               <li>Log in op je Fathom account</li>
                               <li>Ga naar Settings → Integrations → API</li>
-                              <li>Klik op "Generate API Key"</li>
+                              <li>Klik op &quot;Generate API Key&quot;</li>
                               <li>Kopieer de key en plak in Settings → Fathom Koppeling</li>
-                              <li>Klik op "Test Verbinding" en daarna "Opslaan"</li>
+                              <li>Klik op &quot;Test Verbinding&quot; en daarna &quot;Opslaan&quot;</li>
                             </ol>
                             <a
                               href="https://help.fathom.video"
@@ -1378,8 +1229,8 @@ export default function SettingsPage() {
                             Hoe werkt Fathom Sync?
                           </h3>
                           <div className="text-sm text-gray-700 pl-6 space-y-2">
-                            <p><strong>Individueel syncen:</strong> Ga naar een sales rep profiel en klik op de "Ververs" knop. Deze gebruikt je opgeslagen default periode (24u, 7d of 30d).</p>
-                            <p><strong>Bulk syncen (noodoptie):</strong> Ga naar Settings → Fathom Sync → klik op "Fathom Sync Reset" en kies 24u, 7d of 30d. Dit importeert calls voor alle actieve sales reps tegelijk.</p>
+                            <p><strong>Individueel syncen (dagelijks gebruik):</strong> Ga naar een sales rep profiel en klik op de &quot;Ververs&quot; knop. Deze synct altijd de laatste <strong>24 uur</strong>. Gebruik dit voor reguliere updates.</p>
+                            <p><strong>Incrementele Sync Reset (missing calls):</strong> Ga naar Settings → Fathom Sync → klik op &quot;Incrementele Sync Reset&quot;. Dit synct elke sales rep vanaf hun laatste reset checkpoint. Perfect om missing calls op te vangen zonder dubbel werk!</p>
                           </div>
                         </div>
 
@@ -1399,29 +1250,28 @@ export default function SettingsPage() {
                           </div>
                         </div>
 
-                        {/* FAQ Item 3 */}
+                        {/* FAQ Item 3 - Updated */}
                         <div className="bg-white border border-gray-200 rounded-lg p-4">
                           <h3 className="font-semibold text-gray-900 mb-2 flex items-center gap-2">
                             <span className="text-blue-600">Q:</span>
-                            Hoe stel ik mijn default sync periode in?
+                            Wat is het verschil tussen &quot;Ververs&quot; en &quot;Sync Reset&quot;?
                           </h3>
-                          <div className="text-sm text-gray-700 pl-6">
-                            <p>Ga naar Settings → Fathom Sync → kies "24 Uur", "7 Dagen" of "30 Dagen" in het bovenste blok → klik op "Voorkeur Opslaan". Deze instelling wordt automatisch gebruikt door alle "Ververs" knoppen.</p>
+                          <div className="text-sm text-gray-700 pl-6 space-y-2">
+                            <p><strong>&quot;Ververs&quot; knop (24u):</strong> Gebruikt voor dagelijks gebruik. Synct alleen de laatste 24 uur. Minimale API calls, snel en veilig.</p>
+                            <p><strong>&quot;Sync Reset&quot; knop:</strong> Gebruikt als noodoptie wanneer calls ontbreken. Synct incrementeel vanaf de laatste reset checkpoint per sales rep. Voorkomt dubbel werk en blijft schaalbaar.</p>
+                            <p className="text-xs text-gray-600 italic">💡 Tip: Gebruik &quot;Ververs&quot; dagelijks, en &quot;Sync Reset&quot; alleen wanneer je calls mist na problemen.</p>
                           </div>
                         </div>
 
-                        {/* FAQ Item 4 */}
+                        {/* FAQ Item 4 - New */}
                         <div className="bg-white border border-gray-200 rounded-lg p-4">
                           <h3 className="font-semibold text-gray-900 mb-2 flex items-center gap-2">
                             <span className="text-blue-600">Q:</span>
-                            Wat is het verschil tussen de sync periodes?
+                            Hoe werkt de incrementele sync checkpoint?
                           </h3>
                           <div className="text-sm text-gray-700 pl-6">
-                            <ul className="list-disc list-inside space-y-1">
-                              <li><strong>24 uur:</strong> Snelle dagelijkse sync voor recente calls</li>
-                              <li><strong>7 dagen:</strong> Wekelijkse sync voor calls van de afgelopen week</li>
-                              <li><strong>30 dagen:</strong> Uitgebreide sync voor historische data of na team wijzigingen</li>
-                            </ul>
+                            <p>Elke keer dat je een &quot;Sync Reset&quot; doet, wordt per sales rep een checkpoint opgeslagen. De volgende keer synct het systeem alleen vanaf dat checkpoint tot nu. Dit voorkomt dubbel werk en blijft schaalbaar, zelfs na maanden gebruik!</p>
+                            <p className="text-xs text-gray-600 mt-2"><strong>Voorbeeld:</strong> Sarah toegevoegd op 1 okt → Sync Reset op 15 okt (synct 1-15 okt) → Sync Reset op 1 nov (synct alleen 15 okt - 1 nov, niet opnieuw vanaf 1 okt!)</p>
                           </div>
                         </div>
 
@@ -1432,7 +1282,7 @@ export default function SettingsPage() {
                             Hoe voeg ik een nieuwe gebruiker toe?
                           </h3>
                           <div className="text-sm text-gray-700 pl-6">
-                            <p>Ga naar Settings → Gebruikersbeheer → klik "Gebruiker Toevoegen". Vul de gegevens in en je eigen wachtwoord voor beveiliging. De nieuwe gebruiker ontvangt een uitnodigingsmail met een password reset link.</p>
+                            <p>Ga naar Settings → Gebruikersbeheer → klik &quot;Gebruiker Toevoegen&quot;. Vul de gegevens in en je eigen wachtwoord voor beveiliging. De nieuwe gebruiker ontvangt een uitnodigingsmail met een password reset link.</p>
                           </div>
                         </div>
 
@@ -1454,7 +1304,7 @@ export default function SettingsPage() {
                             Hoe configureer ik Fathom teams voor een sales rep?
                           </h3>
                           <div className="text-sm text-gray-700 pl-6">
-                            <p>Ga naar het sales rep profiel → scroll naar "Fathom Team Configuratie" → voeg team namen toe (bijv. "Sales", "Support") → klik "Opslaan". Alleen calls uit deze teams worden geïmporteerd.</p>
+                            <p>Ga naar het sales rep profiel → scroll naar &quot;Fathom Team Configuratie&quot; → voeg team namen toe (bijv. &quot;Sales&quot;, &quot;Support&quot;) → klik &quot;Opslaan&quot;. Alleen calls uit deze teams worden geïmporteerd.</p>
                           </div>
                         </div>
 

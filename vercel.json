@@ -3,6 +3,10 @@
     {
       "path": "/api/cron/sync-fathom",
       "schedule": "*/5 * * * *"
+    },
+    {
+      "path": "/api/calls/analyze",
+      "schedule": "*/5 * * * *"
     }
   ]
 }

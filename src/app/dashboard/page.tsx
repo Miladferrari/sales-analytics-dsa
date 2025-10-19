@@ -38,11 +38,13 @@ export default function DashboardPage() {
       setUser(currentUser)
 
       // Load profile data for name
+      if (!currentUser?.id) return
+
       const { data: profile } = await supabase
         .from('user_profiles')
         .select('first_name, last_name')
-        .eq('id', currentUser?.id)
-        .single()
+        .eq('id', currentUser.id)
+        .single() as { data: any }
 
       if (profile) {
         setFirstName(profile.first_name || '')

@@ -10,10 +10,10 @@ import { createClient } from '@supabase/supabase-js'
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!
 
-// Simple in-memory cache (5 minute TTL)
+// Simple in-memory cache (30 second TTL for real-time updates)
 let configCache: FathomConfig | null = null
 let cacheTime = 0
-const CACHE_TTL = 5 * 60 * 1000 // 5 minutes
+const CACHE_TTL = 30 * 1000 // 30 seconds (reduced for better real-time sync)
 
 export interface FathomConfig {
   apiKey: string | null

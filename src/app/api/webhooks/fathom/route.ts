@@ -16,18 +16,23 @@ import {
   createSuccessResponse
 } from '@/lib/fathom/webhook-logger'
 import { FathomWebhookPayload } from '@/types/fathom'
+import { getFathomConfig } from '@/lib/config/system'
 
 const logger = new WebhookLogger('Fathom Webhook')
 
 /**
  * POST /api/webhooks/fathom
  * Receives webhook notifications from Fathom.ai when calls are completed
+ * Uses database-based Fathom configuration
  */
 export async function POST(request: NextRequest) {
   const timer = new PerformanceTimer()
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
   const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!
-  const webhookSecret = process.env.FATHOM_WEBHOOK_SECRET!
+
+  // Get webhook secret from database (with fallback to env)
+  const config = await getFathomConfig()
+  const webhookSecret = config.webhookSecret
 
   // Initialize Supabase client with service role for server-side operations
   const supabase = createClient(supabaseUrl, supabaseServiceKey)

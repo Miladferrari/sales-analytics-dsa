@@ -61,6 +61,109 @@ export async function GET(request: NextRequest) {
     const hoursParam = url.searchParams.get('hours')
     const customHours = hoursParam ? parseInt(hoursParam) : null
 
+    // NEW: Incremental sync mode (hours=0)
+    const isIncrementalSync = customHours === 0
+
+    if (isIncrementalSync) {
+      console.log('🔄 Incremental Sync Mode: Syncing each sales rep from their last_full_sync or created_at')
+
+      // Get all active sales reps
+      const { data: salesReps } = await supabase
+        .from('sales_reps')
+        .select('id, name, email, created_at, last_full_sync')
+        .is('archived_at', null)
+
+      if (!salesReps || salesReps.length === 0) {
+        console.log('⚠️  No active sales reps found')
+        return NextResponse.json({
+          success: true,
+          processed: 0,
+          imported: 0,
+          skipped: 0,
+          errors: 0,
+          lastSyncTime: new Date().toISOString(),
+          message: 'No active sales reps to sync',
+          duration_ms: Date.now() - startTime
+        })
+      }
+
+      console.log(`👥 Found ${salesReps.length} active sales reps`)
+
+      // Process each sales rep individually
+      const result: SyncResult = {
+        success: true,
+        processed: 0,
+        imported: 0,
+        skipped: 0,
+        errors: 0,
+        lastSyncTime: new Date().toISOString(),
+        calls: []
+      }
+
+      for (const rep of salesReps) {
+        // Determine sync start time: last_full_sync OR created_at (first sync)
+        const syncFromDate = rep.last_full_sync || rep.created_at
+        const hoursToSync = Math.ceil((new Date().getTime() - new Date(syncFromDate).getTime()) / (1000 * 60 * 60))
+
+        console.log(`\n👤 Syncing ${rep.name} (${rep.email})`)
+        console.log(`   📅 From: ${syncFromDate} (~${hoursToSync}h ago)`)
+
+        // Fetch calls for this sales rep
+        try {
+          const calls = await fathomClient.getCallsSince(syncFromDate, 100)
+          console.log(`   📞 Found ${calls.length} calls`)
+
+          // Process each call
+          for (const call of calls) {
+            try {
+              const callResult = await processCall(call, supabase)
+              result.calls.push(callResult)
+              result.processed++
+
+              if (callResult.status === 'imported') {
+                result.imported++
+              } else if (callResult.status === 'skipped') {
+                result.skipped++
+              } else {
+                result.errors++
+              }
+            } catch (error) {
+              console.error(`   ❌ Error processing call ${call.id}:`, error)
+              result.errors++
+              result.processed++
+              result.calls.push({
+                fathom_call_id: call.id,
+                status: 'error',
+                reason: error instanceof Error ? error.message : 'Unknown error'
+              })
+            }
+          }
+
+          // Update last_full_sync for this sales rep (checkpoint)
+          await supabase
+            .from('sales_reps')
+            .update({ last_full_sync: new Date().toISOString() })
+            .eq('id', rep.id)
+
+          console.log(`   ✅ Updated checkpoint for ${rep.name}`)
+
+        } catch (error) {
+          console.error(`   ❌ Failed to sync ${rep.name}:`, error)
+          result.errors++
+        }
+      }
+
+      const duration = Date.now() - startTime
+      console.log(`\n✅ Incremental sync completed in ${duration}ms`)
+      console.log(`📊 Stats: ${result.imported} imported, ${result.skipped} skipped, ${result.errors} errors`)
+
+      return NextResponse.json({
+        ...result,
+        duration_ms: duration
+      })
+    }
+
+    // LEGACY: Standard sync with custom hours (fallback)
     // Step 1: Get last sync time from database (or use custom time range)
     const lastSyncTime = customHours
       ? getCustomSyncTime(customHours)
@@ -336,7 +439,11 @@ async function processCall(
     console.log(`📋 Fathom team: ${fathomTeam}`)
   }
 
-  // Insert call into database (without fathom_team due to schema cache issue - will add later)
+  // Determine initial status based on transcript availability
+  const hasTranscript = call.transcript && call.transcript.length > 50
+  const initialStatus = hasTranscript ? 'pending' : 'completed' // pending = ready for analysis, completed = no transcript yet
+
+  // Insert call into database
   const { data: insertedCall, error: insertError} = await supabase
     .from('calls')
     .insert({
@@ -350,7 +457,7 @@ async function processCall(
       participants: call.participants,
       meeting_title: call.title,
       fathom_synced_at: new Date().toISOString(),
-      fathom_status: 'completed',
+      fathom_status: initialStatus,
       created_at: new Date().toISOString()
     })
     .select('id')
@@ -361,14 +468,16 @@ async function processCall(
     throw insertError
   }
 
-  console.log(`✅ Call ${call.id} imported successfully`)
+  if (hasTranscript) {
+    console.log(`✅ Call ${call.id} imported with transcript - queued for analysis`)
 
-  // Trigger background analysis (non-blocking)
-  if (insertedCall && call.transcript && call.transcript.length > 50) {
+    // Trigger background analysis (non-blocking)
     triggerCallAnalysis(insertedCall.id).catch(err => {
       console.error(`⚠️  Failed to trigger analysis for call ${insertedCall.id}:`, err)
       // Don't fail the sync if analysis trigger fails
     })
+  } else {
+    console.log(`⚠️  Call ${call.id} imported WITHOUT transcript - marked as completed (no analysis possible)`)
   }
 
   return {

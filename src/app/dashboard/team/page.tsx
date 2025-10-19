@@ -29,10 +29,10 @@ export default function TeamPage() {
   >([])
   const [searchTerm, setSearchTerm] = useState('')
   const [filterStatus, setFilterStatus] = useState<'all' | 'qualified' | 'unqualified'>('all')
+  const [filterView, setFilterView] = useState<'active' | 'archived'>('active')
   const [loading, setLoading] = useState(true)
   const [showAddModal, setShowAddModal] = useState(false)
   const [addLoading, setAddLoading] = useState(false)
-  const [showArchived, setShowArchived] = useState(false)
   const [archivedCount, setArchivedCount] = useState(0)
   const [archivedReps, setArchivedReps] = useState<any[]>([])
   const [formData, setFormData] = useState({
@@ -44,6 +44,9 @@ export default function TeamPage() {
   const [availableTeams, setAvailableTeams] = useState<string[]>([])
   const [selectedTeams, setSelectedTeams] = useState<string[]>([])
   const [loadingTeams, setLoadingTeams] = useState(false)
+
+  // Removed Fathom Members tab to avoid rate limiting
+  // Keep it simple with manual form only
 
   // Toast Notifications State
   const [toasts, setToasts] = useState<Toast[]>([])
@@ -62,6 +65,7 @@ export default function TeamPage() {
     loadUser()
     loadReps()
     loadArchivedCount()
+    loadArchivedReps()
   }, [])
 
   // Load available Fathom teams when modal opens
@@ -74,13 +78,24 @@ export default function TeamPage() {
   async function loadFathomTeams() {
     setLoadingTeams(true)
     try {
-      const response = await fetch('/api/fathom/teams')
+      // Add cache-busting timestamp to force fresh data
+      const timestamp = Date.now()
+      const response = await fetch(`/api/fathom/teams?t=${timestamp}`, {
+        cache: 'no-store', // Disable Next.js caching
+        headers: {
+          'Cache-Control': 'no-cache', // Disable browser caching
+        }
+      })
       const data = await response.json()
       if (data.success) {
         setAvailableTeams(data.teams)
+      } else {
+        console.warn('Failed to load Fathom teams:', data.error)
+        setAvailableTeams([])
       }
     } catch (error) {
       console.error('Error loading Fathom teams:', error)
+      setAvailableTeams([])
     } finally {
       setLoadingTeams(false)
     }
@@ -341,7 +356,64 @@ export default function TeamPage() {
     return 'text-red-600 bg-red-50'
   }
 
-  const filteredReps = reps.filter((rep) => {
+  async function handleRestoreRep(repId: string) {
+    try {
+      const { error } = await supabase
+        .from('sales_reps')
+        .update({
+          archived: false,
+          archived_at: null,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', repId)
+
+      if (error) throw error
+
+      showToast('success', 'Medewerker succesvol teruggeplaatst')
+      await loadArchivedReps()
+      await loadArchivedCount()
+      await loadReps()
+    } catch (error) {
+      console.error('Error restoring rep:', error)
+      showToast('error', 'Fout bij terugplaatsen medewerker')
+    }
+  }
+
+  async function handlePermanentDelete(repId: string) {
+    try {
+      // First, delete all related data (calls, analysis, etc.)
+      const { error: callsError } = await supabase
+        .from('calls')
+        .delete()
+        .eq('rep_id', repId)
+
+      if (callsError) {
+        console.error('Error deleting calls:', callsError)
+        showToast('error', 'Fout bij verwijderen call data')
+        return
+      }
+
+      // Now delete the sales rep
+      const { error: repError } = await supabase
+        .from('sales_reps')
+        .delete()
+        .eq('id', repId)
+
+      if (repError) throw repError
+
+      showToast('success', 'Medewerker permanent verwijderd')
+      await loadArchivedReps()
+      await loadArchivedCount()
+    } catch (error) {
+      console.error('Error permanently deleting rep:', error)
+      showToast('error', 'Fout bij permanent verwijderen')
+    }
+  }
+
+  // Combine active and archived reps based on filter
+  const displayReps = filterView === 'active' ? reps : archivedReps
+
+  const filteredReps = displayReps.filter((rep) => {
     const matchesSearch =
       rep.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
       rep.email.toLowerCase().includes(searchTerm.toLowerCase())
@@ -438,28 +510,48 @@ export default function TeamPage() {
             </div>
           </div>
 
-          {/* Archief Card - Smaller & Clickable */}
-          <button
-            onClick={() => {
-              setShowArchived(true)
-              loadArchivedReps()
-            }}
-            className="bg-gradient-to-br from-gray-50 to-gray-100 rounded-lg border-2 border-dashed border-gray-300 p-4 hover:shadow-md hover:border-gray-400 transition-all text-left group"
-          >
-            <div className="flex items-center justify-center mb-3">
-              <div className="w-8 h-8 bg-gray-200 rounded-lg flex items-center justify-center group-hover:bg-gray-300 transition-colors">
-                <svg className="w-4 h-4 text-gray-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <div className="bg-white rounded-lg border border-gray-200 p-5 hover:shadow-md transition-shadow">
+            <div className="flex items-center justify-between mb-4">
+              <div className="w-10 h-10 bg-gray-100 rounded-lg flex items-center justify-center">
+                <svg className="w-5 h-5 text-gray-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4" />
                 </svg>
               </div>
             </div>
-            <p className="text-xs text-gray-500 mb-1 text-center">Archief</p>
-            <div className="flex items-center justify-center">
-              <span className="text-2xl font-semibold text-gray-700">{archivedCount}</span>
+            <p className="text-sm text-gray-600 mb-1">Archief</p>
+            <div className="flex items-baseline gap-2">
+              <span className="text-3xl font-semibold text-gray-900">{archivedCount}</span>
+              <span className="text-sm text-gray-500">gearchiveerd</span>
             </div>
-            <p className="text-xs text-gray-400 text-center mt-1 opacity-0 group-hover:opacity-100 transition-opacity">
-              Klik om te bekijken
-            </p>
+          </div>
+
+        </div>
+
+        {/* View Tabs - Active / Archived */}
+        <div className="flex gap-2 mb-6">
+          <button
+            onClick={() => setFilterView('active')}
+            className={`flex items-center gap-2 px-4 py-2.5 rounded-lg text-sm font-medium transition-all ${
+              filterView === 'active'
+                ? 'bg-indigo-600 text-white shadow-sm'
+                : 'bg-white text-gray-700 border border-gray-200 hover:bg-gray-50'
+            }`}
+          >
+            <User className="w-4 h-4" />
+            Actief ({reps.length})
+          </button>
+          <button
+            onClick={() => setFilterView('archived')}
+            className={`flex items-center gap-2 px-4 py-2.5 rounded-lg text-sm font-medium transition-all ${
+              filterView === 'archived'
+                ? 'bg-indigo-600 text-white shadow-sm'
+                : 'bg-white text-gray-700 border border-gray-200 hover:bg-gray-50'
+            }`}
+          >
+            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4" />
+            </svg>
+            Archief ({archivedCount})
           </button>
         </div>
 
@@ -513,129 +605,231 @@ export default function TeamPage() {
               <p className="text-sm text-gray-500">Geen teamleden gevonden</p>
             </div>
           ) : (
-            filteredReps.map((rep) => (
-              <Link key={rep.id} href={`/dashboard/team/${rep.id}`}>
-                <div className="bg-white rounded-xl border border-gray-200 p-6 hover:shadow-lg hover:border-indigo-300 transition-all cursor-pointer group relative">
-                  {/* 3-dots menu */}
-                  <button
-                    className="absolute top-4 right-4 text-gray-400 hover:text-gray-600 opacity-0 group-hover:opacity-100 transition-opacity"
-                    onClick={(e) => {
-                      e.preventDefault()
-                      e.stopPropagation()
-                    }}
-                  >
-                    <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
-                      <path d="M10 6a2 2 0 110-4 2 2 0 010 4zM10 12a2 2 0 110-4 2 2 0 010 4zM10 18a2 2 0 110-4 2 2 0 010 4z" />
-                    </svg>
-                  </button>
+            filteredReps.map((rep) => {
+              // Check if this is an archived rep
+              const isArchived = filterView === 'archived'
 
-                  {/* Vertical Centered Layout */}
-                  <div className="flex flex-col items-center text-center">
-                    {/* Large Avatar */}
-                    <div className="relative mb-4">
-                      {rep.profile_image_url ? (
-                        <div className="w-28 h-28 rounded-full overflow-hidden shadow-lg border-2 border-gray-200">
-                          <img
-                            src={rep.profile_image_url}
-                            alt={rep.name}
-                            className="w-full h-full object-cover"
-                          />
-                        </div>
-                      ) : (
-                        <div className={`w-28 h-28 rounded-full flex items-center justify-center text-white font-bold text-4xl shadow-lg ${
-                          rep.qualification_status === 'qualified'
-                            ? 'bg-gradient-to-br from-emerald-400 to-emerald-600'
-                            : 'bg-gradient-to-br from-indigo-400 to-indigo-600'
-                        }`}>
-                          {rep.name.split(' ').map(n => n[0]).join('').toUpperCase()}
-                        </div>
-                      )}
+              // For archived reps, show different UI with Link but grayed out styling
+              if (isArchived) {
+                return (
+                  <Link key={rep.id} href={`/dashboard/team/${rep.id}`}>
+                    <div className="bg-gray-50 rounded-xl border border-gray-300 p-6 transition-all hover:shadow-md hover:border-gray-400 cursor-pointer">
+                      {/* Vertical Centered Layout */}
+                      <div className="flex flex-col items-center text-center">
+                      {/* Large Avatar - Grayscale for archived */}
+                      <div className="relative mb-4">
+                        {rep.profile_image_url ? (
+                          <div className="w-28 h-28 rounded-full overflow-hidden shadow-lg border-2 border-gray-300 grayscale">
+                            <img
+                              src={rep.profile_image_url}
+                              alt={rep.name}
+                              className="w-full h-full object-cover"
+                            />
+                          </div>
+                        ) : (
+                          <div className="w-28 h-28 rounded-full flex items-center justify-center text-white font-bold text-4xl shadow-lg bg-gradient-to-br from-gray-300 to-gray-400">
+                            {rep.name.split(' ').map(n => n[0]).join('').toUpperCase()}
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Name */}
+                      <h3 className="text-xl font-semibold text-gray-700 mb-1">
+                        {rep.name}
+                      </h3>
+
+                      {/* Email */}
+                      <div className="flex items-center gap-2 mb-3">
+                        <Mail className="w-3.5 h-3.5 text-gray-400" />
+                        <p className="text-sm text-gray-500 truncate max-w-full px-2">
+                          {rep.email}
+                        </p>
+                      </div>
+
+                      {/* Archived Date */}
+                      <p className="text-xs text-gray-400 mb-4">
+                        Gearchiveerd op {new Date(rep.archived_at).toLocaleDateString('nl-NL', {
+                          day: 'numeric',
+                          month: 'short',
+                          year: 'numeric'
+                        })}
+                      </p>
+
+                      {/* Action Buttons */}
+                      <div className="flex gap-2 w-full mt-2">
+                        <button
+                          onClick={async (e) => {
+                            e.preventDefault()
+                            e.stopPropagation()
+                            await handleRestoreRep(rep.id)
+                          }}
+                          className="flex-1 px-3 py-2 text-xs font-medium text-indigo-700 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 rounded-lg transition-colors"
+                        >
+                          Terugzetten
+                        </button>
+                        <button
+                          onClick={async (e) => {
+                            e.preventDefault()
+                            e.stopPropagation()
+                            if (confirm(`Weet je zeker dat je ${rep.name} permanent wilt verwijderen? Deze actie kan niet ongedaan worden gemaakt.`)) {
+                              await handlePermanentDelete(rep.id)
+                            }
+                          }}
+                          className="flex-1 px-3 py-2 text-xs font-medium text-red-700 bg-red-50 hover:bg-red-100 border border-red-200 rounded-lg transition-colors"
+                        >
+                          Permanent Verwijderen
+                        </button>
+                      </div>
                     </div>
+                    </div>
+                  </Link>
+                )
+              }
 
-                    {/* Name */}
-                    <h3 className="text-xl font-semibold text-gray-900 mb-1 group-hover:text-indigo-600 transition-colors">
-                      {rep.name}
-                    </h3>
+              // For active reps, show normal clickable profile card
+              return (
+                <Link key={rep.id} href={`/dashboard/team/${rep.id}`}>
+                  <div className="bg-white rounded-xl border border-gray-200 p-6 hover:shadow-lg hover:border-indigo-300 transition-all cursor-pointer group relative">
+                    {/* 3-dots menu */}
+                    <button
+                      className="absolute top-4 right-4 text-gray-400 hover:text-gray-600 opacity-0 group-hover:opacity-100 transition-opacity"
+                      onClick={(e) => {
+                        e.preventDefault()
+                        e.stopPropagation()
+                      }}
+                    >
+                      <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
+                        <path d="M10 6a2 2 0 110-4 2 2 0 010 4zM10 12a2 2 0 110-4 2 2 0 010 4zM10 18a2 2 0 110-4 2 2 0 010 4z" />
+                      </svg>
+                    </button>
 
-                    {/* Email */}
-                    <p className="text-sm text-gray-500 mb-4 truncate max-w-full px-2">
-                      {rep.email}
-                    </p>
+                    {/* Vertical Centered Layout */}
+                    <div className="flex flex-col items-center text-center">
+                      {/* Large Avatar */}
+                      <div className="relative mb-4">
+                        {rep.profile_image_url ? (
+                          <div className="w-28 h-28 rounded-full overflow-hidden shadow-lg border-2 border-gray-200">
+                            <img
+                              src={rep.profile_image_url}
+                              alt={rep.name}
+                              className="w-full h-full object-cover"
+                            />
+                          </div>
+                        ) : (
+                          <div className={`w-28 h-28 rounded-full flex items-center justify-center text-white font-bold text-4xl shadow-lg ${
+                            rep.qualification_status === 'qualified'
+                              ? 'bg-gradient-to-br from-emerald-400 to-emerald-600'
+                              : 'bg-gradient-to-br from-indigo-400 to-indigo-600'
+                          }`}>
+                            {rep.name.split(' ').map(n => n[0]).join('').toUpperCase()}
+                          </div>
+                        )}
+                      </div>
 
-                    {/* Progress Bar - Score Indicator */}
-                    <div className="w-full mb-4">
-                      <div className="flex items-center gap-2 mb-2">
-                        <div className="flex-1 h-2 bg-gray-100 rounded-full overflow-hidden">
-                          <div className="flex h-full">
-                            {/* Calls Progress - Blue */}
-                            <div
-                              className="bg-indigo-500 transition-all"
-                              style={{ width: `${Math.min((rep.totalCalls / 20) * 40, 40)}%` }}
-                            ></div>
-                            {/* Score Progress - Purple/Amber based on score */}
-                            <div
-                              className={`transition-all ${rep.averageScore >= 70 ? 'bg-purple-500' : 'bg-amber-500'}`}
-                              style={{ width: `${Math.min((rep.averageScore / 100) * 35, 35)}%` }}
-                            ></div>
-                            {/* Qualification Status - Green/Red */}
-                            <div
-                              className={`transition-all ${
-                                rep.qualification_status === 'qualified' ? 'bg-emerald-500' : 'bg-rose-500'
-                              }`}
-                              style={{ width: '25%' }}
-                            ></div>
+                      {/* Name */}
+                      <h3 className="text-xl font-semibold text-gray-900 mb-1 group-hover:text-indigo-600 transition-colors">
+                        {rep.name}
+                      </h3>
+
+                      {/* Email */}
+                      <p className="text-sm text-gray-500 mb-4 truncate max-w-full px-2">
+                        {rep.email}
+                      </p>
+
+                      {/* Stats Grid */}
+                      <div className="w-full mb-4">
+                        <div className="grid grid-cols-3 gap-2">
+                          {/* Calls */}
+                          <div className="bg-indigo-50 rounded-lg p-3 border border-indigo-100">
+                            <div className="flex items-center justify-center gap-1.5 mb-1">
+                              <svg className="w-4 h-4 text-indigo-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z" />
+                              </svg>
+                              <span className="text-2xl font-bold text-indigo-600">{rep.totalCalls}</span>
+                            </div>
+                            <p className="text-[10px] font-medium text-indigo-700 text-center uppercase tracking-wide">Calls</p>
+                          </div>
+
+                          {/* Score */}
+                          <div className={`rounded-lg p-3 border ${
+                            rep.averageScore >= 80
+                              ? 'bg-emerald-50 border-emerald-100'
+                              : rep.averageScore >= 70
+                              ? 'bg-purple-50 border-purple-100'
+                              : 'bg-amber-50 border-amber-100'
+                          }`}>
+                            <div className="flex items-center justify-center gap-1.5 mb-1">
+                              <svg className={`w-4 h-4 ${
+                                rep.averageScore >= 80
+                                  ? 'text-emerald-600'
+                                  : rep.averageScore >= 70
+                                  ? 'text-purple-600'
+                                  : 'text-amber-600'
+                              }`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+                              </svg>
+                              <span className={`text-2xl font-bold ${
+                                rep.averageScore >= 80
+                                  ? 'text-emerald-600'
+                                  : rep.averageScore >= 70
+                                  ? 'text-purple-600'
+                                  : 'text-amber-600'
+                              }`}>{rep.averageScore || 0}</span>
+                            </div>
+                            <p className={`text-[10px] font-medium text-center uppercase tracking-wide ${
+                              rep.averageScore >= 80
+                                ? 'text-emerald-700'
+                                : rep.averageScore >= 70
+                                ? 'text-purple-700'
+                                : 'text-amber-700'
+                            }`}>Score</p>
+                          </div>
+
+                          {/* Status */}
+                          <div className={`rounded-lg p-3 border ${
+                            rep.qualification_status === 'qualified'
+                              ? 'bg-emerald-50 border-emerald-100'
+                              : 'bg-rose-50 border-rose-100'
+                          }`}>
+                            <div className="flex items-center justify-center mb-1">
+                              {rep.qualification_status === 'qualified' ? (
+                                <div className="w-8 h-8 rounded-full bg-emerald-500 flex items-center justify-center">
+                                  <svg className="w-5 h-5 text-white" fill="currentColor" viewBox="0 0 20 20">
+                                    <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                                  </svg>
+                                </div>
+                              ) : (
+                                <div className="w-8 h-8 rounded-full bg-rose-500 flex items-center justify-center">
+                                  <svg className="w-5 h-5 text-white" fill="currentColor" viewBox="0 0 20 20">
+                                    <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
+                                  </svg>
+                                </div>
+                              )}
+                            </div>
+                            <p className={`text-[10px] font-bold text-center uppercase tracking-wide ${
+                              rep.qualification_status === 'qualified'
+                                ? 'text-emerald-700'
+                                : 'text-rose-700'
+                            }`}>
+                              {rep.qualification_status === 'qualified' ? 'Q' : 'NQ'}
+                            </p>
                           </div>
                         </div>
                       </div>
 
-                      {/* Legend */}
-                      <div className="flex items-center justify-center gap-3 text-xs text-gray-600">
-                        <div className="flex items-center gap-1">
-                          <div className="w-2 h-2 rounded-full bg-indigo-500"></div>
-                          <span className="font-medium">{rep.totalCalls}</span>
-                          <span className="text-gray-500">calls</span>
-                        </div>
-                        <div className="flex items-center gap-1">
-                          <div className={`w-2 h-2 rounded-full ${rep.averageScore >= 70 ? 'bg-purple-500' : 'bg-amber-500'}`}></div>
-                          <span className="font-medium">{rep.averageScore || 0}</span>
-                          <span className="text-gray-500">score</span>
-                        </div>
-                        <div className="flex items-center gap-1.5">
-                          {rep.qualification_status === 'qualified' ? (
-                            <>
-                              <div className="w-3 h-3 rounded-full bg-emerald-500 flex items-center justify-center">
-                                <svg className="w-2 h-2 text-white" fill="currentColor" viewBox="0 0 20 20">
-                                  <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
-                                </svg>
-                              </div>
-                              <span className="text-emerald-600 font-semibold text-[11px]">Q</span>
-                            </>
-                          ) : (
-                            <>
-                              <div className="w-3 h-3 rounded-full bg-rose-500 flex items-center justify-center">
-                                <svg className="w-2 h-2 text-white" fill="currentColor" viewBox="0 0 20 20">
-                                  <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
-                                </svg>
-                              </div>
-                              <span className="text-rose-600 font-semibold text-[11px]">NQ</span>
-                            </>
-                          )}
-                        </div>
+                      {/* Role/Status */}
+                      <div className={`text-xs font-semibold tracking-wider uppercase ${
+                        rep.qualification_status === 'qualified'
+                          ? 'text-emerald-600'
+                          : 'text-gray-600'
+                      }`}>
+                        {rep.qualification_status === 'qualified' ? 'QUALIFIED' : 'SALES REP'}
                       </div>
                     </div>
-
-                    {/* Role/Status */}
-                    <div className={`text-xs font-semibold tracking-wider uppercase ${
-                      rep.qualification_status === 'qualified'
-                        ? 'text-emerald-600'
-                        : 'text-gray-600'
-                    }`}>
-                      {rep.qualification_status === 'qualified' ? 'QUALIFIED' : 'SALES REP'}
-                    </div>
                   </div>
-                </div>
-              </Link>
-            ))
+                </Link>
+              )
+            })
           )}
         </div>
       </div>
@@ -832,7 +1026,7 @@ export default function TeamPage() {
                     <div>
                       <p className="text-sm font-medium text-amber-900">Status: Unqualified</p>
                       <p className="text-xs text-amber-700 mt-0.5">
-                        Nieuwe medewerkers starten als "Unqualified" tot ze gekwalificeerd worden
+                        Nieuwe medewerkers starten als &quot;Unqualified&quot; tot ze gekwalificeerd worden
                       </p>
                     </div>
                   </div>
@@ -857,88 +1051,6 @@ export default function TeamPage() {
                 </button>
               </div>
             </form>
-          </div>
-        </div>
-      )}
-
-      {/* Archief Modal */}
-      {showArchived && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-lg shadow-xl w-full max-w-4xl max-h-[90vh] overflow-hidden flex flex-col">
-            <div className="p-6 border-b border-gray-200">
-              <div className="flex items-center justify-between">
-                <div>
-                  <h2 className="text-xl font-semibold text-gray-900">Gearchiveerde Medewerkers</h2>
-                  <p className="text-sm text-gray-500 mt-1">{archivedCount} medewerkers in archief</p>
-                </div>
-                <button
-                  onClick={() => setShowArchived(false)}
-                  className="text-gray-400 hover:text-gray-600 transition-colors"
-                >
-                  <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                  </svg>
-                </button>
-              </div>
-            </div>
-
-            <div className="flex-1 overflow-y-auto p-6">
-              {archivedCount === 0 ? (
-                <div className="text-center py-12">
-                  <svg className="w-16 h-16 text-gray-300 mx-auto mb-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4" />
-                  </svg>
-                  <p className="text-gray-500 text-sm">Geen gearchiveerde medewerkers</p>
-                </div>
-              ) : (
-                <div className="space-y-3">
-                  {archivedReps.map((rep) => (
-                    <Link
-                      key={rep.id}
-                      href={`/dashboard/team/${rep.id}`}
-                      onClick={() => setShowArchived(false)}
-                    >
-                      <div className="bg-gray-50 rounded-lg border border-gray-200 p-4 hover:bg-gray-100 hover:border-gray-300 transition-all cursor-pointer group">
-                        <div className="flex items-center justify-between">
-                          <div className="flex items-center gap-3">
-                            {/* Avatar */}
-                            <div className="w-12 h-12 rounded-full bg-gradient-to-br from-gray-300 to-gray-400 flex items-center justify-center flex-shrink-0 group-hover:from-gray-400 group-hover:to-gray-500 transition-all">
-                              <span className="text-white font-semibold text-sm">
-                                {rep.name.split(' ').map((n: string) => n[0]).join('').toUpperCase()}
-                              </span>
-                            </div>
-
-                            {/* Info */}
-                            <div>
-                              <h3 className="font-medium text-gray-900 group-hover:text-indigo-600 transition-colors">{rep.name}</h3>
-                              <div className="flex items-center gap-2 mt-0.5">
-                                <Mail className="w-3.5 h-3.5 text-gray-400" />
-                                <p className="text-sm text-gray-500">{rep.email}</p>
-                              </div>
-                            </div>
-                          </div>
-
-                          {/* Archived Date + Arrow */}
-                          <div className="flex items-center gap-3">
-                            <div className="text-right">
-                              <p className="text-xs text-gray-400">Gearchiveerd</p>
-                              <p className="text-xs text-gray-600">
-                                {new Date(rep.archived_at).toLocaleDateString('nl-NL', {
-                                  day: 'numeric',
-                                  month: 'short',
-                                  year: 'numeric'
-                                })}
-                              </p>
-                            </div>
-                            <ChevronRight className="w-5 h-5 text-gray-400 group-hover:text-indigo-600 transition-colors" />
-                          </div>
-                        </div>
-                      </div>
-                    </Link>
-                  ))}
-                </div>
-              )}
-            </div>
           </div>
         </div>
       )}

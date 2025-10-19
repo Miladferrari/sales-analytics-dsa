@@ -200,20 +200,23 @@ export async function POST(request: NextRequest) {
   } catch (error) {
     console.error('❌ Analysis failed:', error)
 
-    // Update call status to "failed"
-    if (error instanceof Error && error.message.includes('callId')) {
-      try {
-        const body = await request.json()
+    // IMPORTANT: Always update call status to prevent stuck "analyzing" state
+    try {
+      const body = await request.json()
+      const callId = body.callId
+
+      if (callId) {
+        console.log(`🔄 Resetting call ${callId} status from analyzing to pending (will retry later)`)
+
         await supabase
           .from('calls')
           .update({
-            fathom_status: 'failed',
-            // Optioneel: sla error op in een error_message veld
+            fathom_status: 'pending', // Reset to pending so it can be retried
           })
-          .eq('id', body.callId)
-      } catch (e) {
-        // Ignore cleanup errors
+          .eq('id', callId)
       }
+    } catch (cleanupError) {
+      console.error('⚠️  Failed to reset call status:', cleanupError)
     }
 
     return NextResponse.json(
@@ -228,13 +231,35 @@ export async function POST(request: NextRequest) {
 
 /**
  * GET /api/calls/analyze
- * Analyse status checker - verwerk alle pending calls
+ * Analyse status checker - verwerk alle pending calls + reset stuck analyzing calls
  */
 export async function GET() {
   const supabase = createClient(supabaseUrl, supabaseServiceKey)
 
   try {
-    // Find all calls that need analysis
+    // FIRST: Reset stuck "analyzing" calls (older than 3 minutes)
+    const threeMinutesAgo = new Date()
+    threeMinutesAgo.setMinutes(threeMinutesAgo.getMinutes() - 3)
+
+    const { data: stuckCalls } = await supabase
+      .from('calls')
+      .select('id, meeting_title, created_at')
+      .eq('fathom_status', 'analyzing')
+      .lt('created_at', threeMinutesAgo.toISOString())
+
+    if (stuckCalls && stuckCalls.length > 0) {
+      console.log(`⚠️  Found ${stuckCalls.length} stuck calls in analyzing status, resetting to pending...`)
+
+      await supabase
+        .from('calls')
+        .update({ fathom_status: 'pending' })
+        .eq('fathom_status', 'analyzing')
+        .lt('created_at', threeMinutesAgo.toISOString())
+
+      console.log(`✅ Reset ${stuckCalls.length} stuck calls to pending`)
+    }
+
+    // THEN: Find all calls that need analysis
     const { data: pendingCalls, error } = await supabase
       .from('calls')
       .select('id, fathom_call_id')
@@ -248,8 +273,11 @@ export async function GET() {
     if (!pendingCalls || pendingCalls.length === 0) {
       return NextResponse.json({
         success: true,
-        message: 'No pending calls to analyze',
-        processed: 0
+        message: stuckCalls && stuckCalls.length > 0
+          ? `Reset ${stuckCalls.length} stuck calls, no pending calls to analyze`
+          : 'No pending calls to analyze',
+        processed: 0,
+        stuckCallsReset: stuckCalls?.length || 0
       })
     }
 

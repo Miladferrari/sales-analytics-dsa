@@ -4,6 +4,8 @@
  * Docs: https://docs.fathom.video/docs/api-reference
  */
 
+import { fetchWithRetry, rateLimitDelay } from './retry-helper'
+
 // Raw response from Fathom API
 export interface FathomAPICall {
   title: string
@@ -121,18 +123,26 @@ export class FathomAPIClient {
       url.searchParams.set('cursor', cursor)
     }
 
-    const response = await fetch(url.toString(), {
+    // Use retry helper to handle rate limiting
+    const response = await fetchWithRetry(url.toString(), {
       method: 'GET',
       headers: {
         'X-Api-Key': this.apiKey,
         'Content-Type': 'application/json',
       },
+    }, {
+      maxRetries: 3,
+      initialDelay: 1000,
+      maxDelay: 8000
     })
 
     if (!response.ok) {
       const errorText = await response.text()
       throw new Error(`Fathom API error (${response.status}): ${errorText}`)
     }
+
+    // Add small delay to prevent hitting rate limits
+    await rateLimitDelay(300)
 
     return response.json()
   }
